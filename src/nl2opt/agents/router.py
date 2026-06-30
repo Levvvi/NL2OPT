@@ -1,0 +1,215 @@
+from __future__ import annotations
+
+import argparse
+import json
+
+from pydantic import Field
+
+from nl2opt.schemas import ProblemType
+from nl2opt.schemas.base import StrictBaseModel
+
+
+class RouterResult(StrictBaseModel):
+    problem_type: ProblemType
+    confidence: float = Field(ge=0.0, le=1.0)
+    matched_keywords: list[str]
+    reason: str
+
+
+KEYWORDS: dict[ProblemType, list[str]] = {
+    ProblemType.PRODUCTION: [
+        "工厂",
+        "生产",
+        "产品",
+        "利润",
+        "原料",
+        "工时",
+        "资源",
+        "产量",
+        "最大利润",
+        "成本最小",
+        "生产计划",
+        "材料",
+        "库存限制",
+        "配方",
+        "订单",
+        "班次",
+    ],
+    ProblemType.ASSIGNMENT: [
+        "员工",
+        "任务",
+        "分配",
+        "指派",
+        "安排人员",
+        "每个任务",
+        "成本矩阵",
+        "能力",
+        "容量",
+        "派给",
+        "负责人",
+        "工作分派",
+        "技师",
+        "客服",
+        "工单",
+        "拣货员",
+    ],
+    ProblemType.JOBSHOP: [
+        "工件",
+        "工序",
+        "机器",
+        "加工",
+        "排产",
+        "车间",
+        "完工时间",
+        "最大完工时间",
+        "makespan",
+        "先后顺序",
+        "不可重叠",
+        "CNC",
+        "订单",
+        "包装",
+    ],
+    ProblemType.VRP: [
+        "车辆",
+        "配送",
+        "客户",
+        "仓库",
+        "路线",
+        "路径",
+        "司机",
+        "容量",
+        "需求量",
+        "总路程",
+        "送货",
+        "配送中心",
+        "车辆路径",
+        "距离矩阵",
+        "不能超载",
+    ],
+}
+
+
+def _matched_keywords(text: str, keywords: list[str]) -> list[str]:
+    lowered = text.lower()
+    return [keyword for keyword in keywords if keyword.lower() in lowered]
+
+
+def _score(text: str, problem_type: ProblemType, matches: list[str]) -> float:
+    score = float(len(matches))
+
+    if problem_type is ProblemType.VRP:
+        route_terms = [
+            "车辆",
+            "配送",
+            "路线",
+            "仓库",
+            "客户",
+            "配送中心",
+            "车辆路径",
+            "送货",
+            "司机",
+            "路径",
+        ]
+        constraint_terms = ["容量", "需求量", "总路程", "距离", "不能超载"]
+        if any(term in text for term in route_terms) and any(term in text for term in constraint_terms):
+            score += 2.0
+    elif problem_type is ProblemType.JOBSHOP:
+        priority_terms = ["工序", "机器", "加工", "完工时间", "先后顺序", "不可重叠", "排产"]
+        if sum(1 for term in priority_terms if term in text) >= 2:
+            score += 1.5
+    elif problem_type is ProblemType.ASSIGNMENT:
+        priority_terms = ["员工", "任务", "分配", "指派", "派给", "负责人", "工单"]
+        if sum(1 for term in priority_terms if term in text) >= 2:
+            score += 1.0
+    elif problem_type is ProblemType.PRODUCTION:
+        priority_terms = ["产品", "生产", "利润", "原料", "工时", "产量", "材料"]
+        if sum(1 for term in priority_terms if term in text) >= 2:
+            score += 1.0
+
+    return score
+
+
+def _confidence(top_score: float, second_score: float, matched_count: int) -> float:
+    if matched_count == 0:
+        return 0.0
+    margin = max(0.0, top_score - second_score)
+    confidence = 0.45 + 0.1 * matched_count + 0.05 * margin
+    if margin < 1.0:
+        confidence -= 0.15
+    return round(max(0.1, min(0.95, confidence)), 2)
+
+
+def route_text(text: str) -> RouterResult:
+    normalized = text.strip()
+    if not normalized:
+        return RouterResult(
+            problem_type=ProblemType.UNSUPPORTED,
+            confidence=0.0,
+            matched_keywords=[],
+            reason="输入为空，无法判断问题类型",
+        )
+
+    matches_by_type = {
+        problem_type: _matched_keywords(normalized, keywords)
+        for problem_type, keywords in KEYWORDS.items()
+    }
+    if not any(matches_by_type.values()):
+        return RouterResult(
+            problem_type=ProblemType.UNSUPPORTED,
+            confidence=0.0,
+            matched_keywords=[],
+            reason="未命中 production、assignment、jobshop、vrp 的明显关键词",
+        )
+
+    scores = {
+        problem_type: _score(normalized, problem_type, matches)
+        for problem_type, matches in matches_by_type.items()
+    }
+    priority = [
+        ProblemType.VRP,
+        ProblemType.JOBSHOP,
+        ProblemType.ASSIGNMENT,
+        ProblemType.PRODUCTION,
+    ]
+    ordered = sorted(
+        scores,
+        key=lambda problem_type: (scores[problem_type], -priority.index(problem_type)),
+        reverse=True,
+    )
+    winner = ordered[0]
+    second_score = scores[ordered[1]]
+    matched = matches_by_type[winner]
+
+    if not matched:
+        return RouterResult(
+            problem_type=ProblemType.UNSUPPORTED,
+            confidence=0.0,
+            matched_keywords=[],
+            reason="没有足够关键词支持任一问题类型",
+        )
+
+    keyword_text = "、".join(matched)
+    return RouterResult(
+        problem_type=winner,
+        confidence=_confidence(scores[winner], second_score, len(matched)),
+        matched_keywords=matched,
+        reason=f"命中 {winner.value} 相关关键词：{keyword_text}",
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Route a Chinese optimization question to a problem type.")
+    parser.add_argument("text", nargs="?", help="中文优化问题文本")
+    args = parser.parse_args(argv)
+
+    if not args.text:
+        parser.print_usage()
+        return 2
+
+    result = route_text(args.text)
+    print(json.dumps(result.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

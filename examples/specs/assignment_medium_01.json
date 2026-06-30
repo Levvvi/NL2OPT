@@ -1,0 +1,32 @@
+{
+  "problem_id": "assignment_medium_01",
+  "problem_type": "assignment",
+  "objective": {
+    "sense": "minimize",
+    "name": "cost"
+  },
+  "employees": [
+    {"name": "W1", "capacity": 2},
+    {"name": "W2", "capacity": 2},
+    {"name": "W3", "capacity": 1},
+    {"name": "W4", "capacity": 2}
+  ],
+  "tasks": [
+    {"name": "T1"},
+    {"name": "T2"},
+    {"name": "T3"},
+    {"name": "T4"},
+    {"name": "T5"}
+  ],
+  "costs": {
+    "W1": {"T1": 9, "T2": 4, "T3": 7, "T4": 8, "T5": 6},
+    "W2": {"T1": 6, "T2": 8, "T3": 5, "T4": 7, "T5": 9},
+    "W3": {"T1": 5, "T2": 7, "T3": 8, "T4": 6, "T5": 4},
+    "W4": {"T1": 8, "T2": 6, "T3": 4, "T4": 5, "T5": 7}
+  },
+  "assumptions": [
+    "Each task must be assigned to exactly one employee.",
+    "Each employee can take at most capacity tasks."
+  ],
+  "missing_fields": []
+}

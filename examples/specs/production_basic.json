@@ -1,0 +1,43 @@
+{
+  "problem_id": "production_basic",
+  "problem_type": "production",
+  "objective": {
+    "sense": "maximize",
+    "name": "profit"
+  },
+  "products": [
+    {
+      "name": "A",
+      "profit": 40
+    },
+    {
+      "name": "B",
+      "profit": 30
+    }
+  ],
+  "resources": [
+    {
+      "name": "labor",
+      "capacity": 100
+    },
+    {
+      "name": "material",
+      "capacity": 80
+    }
+  ],
+  "consumption": {
+    "A": {
+      "labor": 2,
+      "material": 1
+    },
+    "B": {
+      "labor": 1,
+      "material": 2
+    }
+  },
+  "assumptions": [
+    "Product quantities are non-negative integers.",
+    "Profit is linear in production quantity."
+  ],
+  "missing_fields": []
+}

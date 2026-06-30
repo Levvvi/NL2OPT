@@ -1,0 +1,31 @@
+{
+  "problem_id": "production_hard_01",
+  "problem_type": "production",
+  "objective": {
+    "sense": "maximize",
+    "name": "profit"
+  },
+  "products": [
+    {"name": "P1", "profit": 70},
+    {"name": "P2", "profit": 60},
+    {"name": "P3", "profit": 45},
+    {"name": "P4", "profit": 35}
+  ],
+  "resources": [
+    {"name": "labor", "capacity": 180},
+    {"name": "machine", "capacity": 140},
+    {"name": "material", "capacity": 160}
+  ],
+  "consumption": {
+    "P1": {"labor": 4, "machine": 3, "material": 5},
+    "P2": {"labor": 3, "machine": 4, "material": 2},
+    "P3": {"labor": 2, "machine": 2, "material": 3},
+    "P4": {"labor": 1, "machine": 1, "material": 2}
+  },
+  "assumptions": [
+    "Product quantities are non-negative integers.",
+    "Profit is linear in production quantity.",
+    "Only resource capacity constraints are modeled in the current schema."
+  ],
+  "missing_fields": []
+}

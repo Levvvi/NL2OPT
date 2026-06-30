@@ -1,0 +1,43 @@
+{
+  "problem_id": "jobshop_medium_02",
+  "problem_type": "jobshop",
+  "objective": {
+    "sense": "minimize",
+    "name": "makespan"
+  },
+  "machines": [
+    {"name": "M1"},
+    {"name": "M2"},
+    {"name": "M3"}
+  ],
+  "jobs": [
+    {
+      "name": "Order1",
+      "operations": [
+        {"machine": "M2", "duration": 4},
+        {"machine": "M1", "duration": 3}
+      ]
+    },
+    {
+      "name": "Order2",
+      "operations": [
+        {"machine": "M1", "duration": 2},
+        {"machine": "M3", "duration": 3},
+        {"machine": "M2", "duration": 2}
+      ]
+    },
+    {
+      "name": "Order3",
+      "operations": [
+        {"machine": "M3", "duration": 2},
+        {"machine": "M2", "duration": 3}
+      ]
+    }
+  ],
+  "assumptions": [
+    "Operations for each job must follow the listed order.",
+    "Each machine can process at most one operation at a time.",
+    "Operations are non-preemptive."
+  ],
+  "missing_fields": []
+}

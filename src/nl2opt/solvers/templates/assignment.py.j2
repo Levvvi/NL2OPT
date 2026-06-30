@@ -1,0 +1,134 @@
+import json
+import time
+
+from ortools.linear_solver import pywraplp
+
+
+SPEC = {{ spec_json }}
+
+
+def write_solution(result):
+    with open("solution.json", "w", encoding="utf-8") as output_file:
+        json.dump(result, output_file, indent=2)
+
+
+def create_solver():
+    for solver_name in ("SCIP", "CBC_MIXED_INTEGER_PROGRAMMING", "CBC"):
+        solver = pywraplp.Solver.CreateSolver(solver_name)
+        if solver is not None:
+            return solver, solver_name
+    return None, ""
+
+
+def normalize_number(value):
+    rounded = round(value)
+    if abs(value - rounded) <= 1e-9:
+        return int(rounded)
+    return value
+
+
+def main():
+    start = time.perf_counter()
+
+    try:
+        solver, solver_name = create_solver()
+        if solver is None:
+            write_solution(
+                {
+                    "status": "ERROR",
+                    "objective_value": None,
+                    "solution": {},
+                    "runtime_sec": time.perf_counter() - start,
+                    "solver": "ortools.linear_solver",
+                    "violations": ["No OR-Tools linear solver is available."],
+                }
+            )
+            return
+
+        assignment_vars = {}
+        for employee in SPEC["employees"]:
+            employee_name = employee["name"]
+            for task_name in SPEC["costs"].get(employee_name, {}):
+                variable_name = f"assign_{employee_name}_{task_name}"
+                assignment_vars[(employee_name, task_name)] = solver.BoolVar(variable_name)
+
+        for task in SPEC["tasks"]:
+            task_name = task["name"]
+            task_vars = [
+                variable
+                for (employee_name, candidate_task), variable in assignment_vars.items()
+                if candidate_task == task_name
+            ]
+            solver.Add(solver.Sum(task_vars) == 1)
+
+        for employee in SPEC["employees"]:
+            employee_name = employee["name"]
+            employee_vars = [
+                variable
+                for (candidate_employee, task_name), variable in assignment_vars.items()
+                if candidate_employee == employee_name
+            ]
+            solver.Add(solver.Sum(employee_vars) <= employee["capacity"])
+
+        objective = solver.Sum(
+            SPEC["costs"][employee_name][task_name] * variable
+            for (employee_name, task_name), variable in assignment_vars.items()
+        )
+        if SPEC["objective"]["sense"] == "maximize":
+            solver.Maximize(objective)
+        else:
+            solver.Minimize(objective)
+
+        status_code = solver.Solve()
+        status_map = {
+            pywraplp.Solver.OPTIMAL: "OPTIMAL",
+            pywraplp.Solver.FEASIBLE: "FEASIBLE",
+            pywraplp.Solver.INFEASIBLE: "INFEASIBLE",
+        }
+        status = status_map.get(status_code, "ERROR")
+
+        solution = {}
+        objective_value = None
+        if status in {"OPTIMAL", "FEASIBLE"}:
+            assignments = {}
+            employee_loads = {
+                employee["name"]: 0
+                for employee in SPEC["employees"]
+            }
+            for (employee_name, task_name), variable in assignment_vars.items():
+                if variable.solution_value() > 0.5:
+                    assignments[task_name] = employee_name
+                    employee_loads[employee_name] += 1
+
+            objective_value = normalize_number(solver.Objective().Value())
+            solution = {
+                "assignments": assignments,
+                "employee_loads": employee_loads,
+                "total_cost": objective_value,
+            }
+
+        write_solution(
+            {
+                "status": status,
+                "objective_value": objective_value,
+                "solution": solution,
+                "runtime_sec": time.perf_counter() - start,
+                "solver": f"ortools.linear_solver:{solver_name}",
+                "violations": [] if status in {"OPTIMAL", "FEASIBLE"} else [status],
+            }
+        )
+    except Exception as exc:
+        write_solution(
+            {
+                "status": "ERROR",
+                "objective_value": None,
+                "solution": {},
+                "runtime_sec": time.perf_counter() - start,
+                "solver": "ortools.linear_solver",
+                "violations": [str(exc)],
+            }
+        )
+
+
+if __name__ == "__main__":
+    main()

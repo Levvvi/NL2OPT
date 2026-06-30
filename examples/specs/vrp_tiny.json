@@ -1,0 +1,61 @@
+{
+  "problem_id": "vrp_tiny",
+  "problem_type": "vrp",
+  "objective": {
+    "sense": "minimize",
+    "name": "distance"
+  },
+  "depot": "depot",
+  "vehicles": [
+    {
+      "name": "V1",
+      "capacity": 10
+    }
+  ],
+  "customers": [
+    {
+      "name": "C1",
+      "demand": 2
+    },
+    {
+      "name": "C2",
+      "demand": 3
+    },
+    {
+      "name": "C3",
+      "demand": 4
+    }
+  ],
+  "distance_matrix": {
+    "depot": {
+      "depot": 0,
+      "C1": 2,
+      "C2": 4,
+      "C3": 6
+    },
+    "C1": {
+      "depot": 2,
+      "C1": 0,
+      "C2": 2,
+      "C3": 4
+    },
+    "C2": {
+      "depot": 4,
+      "C1": 2,
+      "C2": 0,
+      "C3": 2
+    },
+    "C3": {
+      "depot": 6,
+      "C1": 4,
+      "C2": 2,
+      "C3": 0
+    }
+  },
+  "assumptions": [
+    "所有车辆从 depot 出发并返回 depot",
+    "每个客户必须被访问且仅访问一次",
+    "目标是最小化总行驶距离"
+  ],
+  "missing_fields": []
+}

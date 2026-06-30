@@ -1,0 +1,42 @@
+{
+  "problem_id": "production_tiny",
+  "problem_type": "production",
+  "objective": {
+    "sense": "maximize",
+    "name": "profit"
+  },
+  "products": [
+    {
+      "name": "X",
+      "profit": 5
+    },
+    {
+      "name": "Y",
+      "profit": 4
+    }
+  ],
+  "resources": [
+    {
+      "name": "labor",
+      "capacity": 8
+    },
+    {
+      "name": "material",
+      "capacity": 8
+    }
+  ],
+  "consumption": {
+    "X": {
+      "labor": 2,
+      "material": 1
+    },
+    "Y": {
+      "labor": 1,
+      "material": 2
+    }
+  },
+  "assumptions": [
+    "产品数量按非负整数处理"
+  ],
+  "missing_fields": []
+}

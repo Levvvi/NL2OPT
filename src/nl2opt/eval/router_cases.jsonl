@@ -1,0 +1,20 @@
+{"case_id": "router_production_01", "text": "某工厂生产 A 和 B 两种产品。A 每件利润 40 元，B 每件利润 30 元。工时和原料有限，问如何安排产量使利润最大？", "expected_problem_type": "production", "difficulty": "easy"}
+{"case_id": "router_production_02", "text": "饮料车间要生产橙汁和茶饮，两种产品消耗不同材料和机器时间，希望在资源限制下获得最大利润。", "expected_problem_type": "production", "difficulty": "easy"}
+{"case_id": "router_production_03", "text": "一家食品工厂有多条班次和原料约束，需要制定生产计划，让订单需求满足且总成本最小。", "expected_problem_type": "production", "difficulty": "medium"}
+{"case_id": "router_production_04", "text": "服装工厂要决定几类产品的产量，每类产品占用工时和布料，目标是在材料限制下提高利润。", "expected_problem_type": "production", "difficulty": "medium"}
+{"case_id": "router_production_05", "text": "三个产品共用同一批原料、包装材料和人工工时，库存限制固定，请问生产多少才能让总利润最高？", "expected_problem_type": "production", "difficulty": "hard"}
+{"case_id": "router_production_06", "text": "工厂已经收到订单，但不同产品的生产成本、利润和资源消耗不同，需要在可用资源内选择产量组合。", "expected_problem_type": "production", "difficulty": "hard"}
+{"case_id": "router_assignment_01", "text": "需要把 T1 到 T4 四个任务分配给 Alice、Bob、Chen 三名员工，每个员工有 capacity 限制，希望总分配成本最低。", "expected_problem_type": "assignment", "difficulty": "easy"}
+{"case_id": "router_assignment_02", "text": "维修主管要把多个工单指派给不同技师，每个任务只能派给一名技师，并且总成本越低越好。", "expected_problem_type": "assignment", "difficulty": "easy"}
+{"case_id": "router_assignment_03", "text": "客服团队每天要处理多类客户请求，请把任务分配给员工，考虑每个人的能力和处理成本。", "expected_problem_type": "assignment", "difficulty": "medium"}
+{"case_id": "router_assignment_04", "text": "仓库有几名拣货员和若干拣货任务，不同员工完成任务的效率不同，希望安排人员使总成本最小。", "expected_problem_type": "assignment", "difficulty": "medium"}
+{"case_id": "router_assignment_05", "text": "老师要把学生项目分配给负责人，每个负责人容量有限，每个项目必须由一人负责，尽量降低匹配成本。", "expected_problem_type": "assignment", "difficulty": "hard"}
+{"case_id": "router_jobshop_01", "text": "两个工件 J1 和 J2 需要按固定工序在 M1、M2 两台机器上加工，同一机器不能重叠，目标是最小化 makespan。", "expected_problem_type": "jobshop", "difficulty": "easy"}
+{"case_id": "router_jobshop_02", "text": "车间里多个订单要按先后顺序经过不同机器加工，想做排产并缩短最大完工时间。", "expected_problem_type": "jobshop", "difficulty": "easy"}
+{"case_id": "router_jobshop_03", "text": "CNC 车间有几道工序需要在不同机器上依次加工，每台机器同一时间只能处理一道工序。", "expected_problem_type": "jobshop", "difficulty": "medium"}
+{"case_id": "router_jobshop_04", "text": "包装车间包含前后工序，不同工件需要依次经过封口和贴标机器，目标是最小化完工时间。", "expected_problem_type": "jobshop", "difficulty": "medium"}
+{"case_id": "router_jobshop_05", "text": "多个工件的加工路线不同，但每个工件内部有固定先后顺序，请安排机器排产使 makespan 最短。", "expected_problem_type": "jobshop", "difficulty": "hard"}
+{"case_id": "router_vrp_01", "text": "仓库 depot 要给多个客户配送，车辆容量有限，每个客户有需求量，希望规划路线使总路程最短。", "expected_problem_type": "vrp", "difficulty": "easy"}
+{"case_id": "router_vrp_02", "text": "两辆车从配送中心出发送货，客户需求量不同，车辆不能超载，目标是总行驶距离最小。", "expected_problem_type": "vrp", "difficulty": "easy"}
+{"case_id": "router_vrp_03", "text": "已知客户之间的距离矩阵和每辆车容量，请设计车辆路径，让所有客户访问一次并返回仓库。", "expected_problem_type": "vrp", "difficulty": "medium"}
+{"case_id": "router_vrp_04", "text": "司机需要从仓库出发按路线服务多个客户，考虑配送需求量和车辆容量，要求总路程尽量短。", "expected_problem_type": "vrp", "difficulty": "medium"}

@@ -1,0 +1,50 @@
+{
+  "problem_id": "jobshop_tiny",
+  "problem_type": "jobshop",
+  "objective": {
+    "sense": "minimize",
+    "name": "makespan"
+  },
+  "machines": [
+    {
+      "name": "M1"
+    },
+    {
+      "name": "M2"
+    }
+  ],
+  "jobs": [
+    {
+      "name": "J1",
+      "operations": [
+        {
+          "machine": "M1",
+          "duration": 2
+        },
+        {
+          "machine": "M2",
+          "duration": 1
+        }
+      ]
+    },
+    {
+      "name": "J2",
+      "operations": [
+        {
+          "machine": "M2",
+          "duration": 2
+        },
+        {
+          "machine": "M1",
+          "duration": 1
+        }
+      ]
+    }
+  ],
+  "assumptions": [
+    "每个 job 的 operations 按列表顺序加工",
+    "同一台机器同一时间只能加工一道工序",
+    "工序不可中断"
+  ],
+  "missing_fields": []
+}

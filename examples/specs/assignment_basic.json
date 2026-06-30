@@ -1,0 +1,62 @@
+{
+  "problem_id": "assignment_basic",
+  "problem_type": "assignment",
+  "objective": {
+    "sense": "minimize",
+    "name": "cost"
+  },
+  "employees": [
+    {
+      "name": "Alice",
+      "capacity": 2
+    },
+    {
+      "name": "Bob",
+      "capacity": 2
+    },
+    {
+      "name": "Chen",
+      "capacity": 2
+    }
+  ],
+  "tasks": [
+    {
+      "name": "T1"
+    },
+    {
+      "name": "T2"
+    },
+    {
+      "name": "T3"
+    },
+    {
+      "name": "T4"
+    }
+  ],
+  "costs": {
+    "Alice": {
+      "T1": 8,
+      "T2": 6,
+      "T3": 10,
+      "T4": 9
+    },
+    "Bob": {
+      "T1": 9,
+      "T2": 7,
+      "T3": 4,
+      "T4": 8
+    },
+    "Chen": {
+      "T1": 5,
+      "T2": 8,
+      "T3": 7,
+      "T4": 6
+    }
+  },
+  "assumptions": [
+    "每个任务必须分配给且仅分配给一名员工",
+    "员工最多承担 capacity 个任务",
+    "costs 中列出的员工-任务组合表示可分配组合"
+  ],
+  "missing_fields": []
+}

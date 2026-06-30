@@ -1,0 +1,37 @@
+{
+  "problem_id": "vrp_hard_01",
+  "problem_type": "vrp",
+  "objective": {
+    "sense": "minimize",
+    "name": "distance"
+  },
+  "depot": "depot",
+  "vehicles": [
+    {"name": "V1", "capacity": 10},
+    {"name": "V2", "capacity": 10},
+    {"name": "V3", "capacity": 10}
+  ],
+  "customers": [
+    {"name": "C1", "demand": 3},
+    {"name": "C2", "demand": 4},
+    {"name": "C3", "demand": 3},
+    {"name": "C4", "demand": 5},
+    {"name": "C5", "demand": 4},
+    {"name": "C6", "demand": 5}
+  ],
+  "distance_matrix": {
+    "depot": {"depot": 0, "C1": 2, "C2": 4, "C3": 6, "C4": 12, "C5": 14, "C6": 16},
+    "C1": {"depot": 2, "C1": 0, "C2": 2, "C3": 4, "C4": 10, "C5": 12, "C6": 14},
+    "C2": {"depot": 4, "C1": 2, "C2": 0, "C3": 2, "C4": 8, "C5": 10, "C6": 12},
+    "C3": {"depot": 6, "C1": 4, "C2": 2, "C3": 0, "C4": 6, "C5": 8, "C6": 10},
+    "C4": {"depot": 12, "C1": 10, "C2": 8, "C3": 6, "C4": 0, "C5": 2, "C6": 4},
+    "C5": {"depot": 14, "C1": 12, "C2": 10, "C3": 8, "C4": 2, "C5": 0, "C6": 2},
+    "C6": {"depot": 16, "C1": 14, "C2": 12, "C3": 10, "C4": 4, "C5": 2, "C6": 0}
+  },
+  "assumptions": [
+    "All vehicles start and end at depot.",
+    "Each customer must be visited exactly once.",
+    "Vehicle load cannot exceed capacity."
+  ],
+  "missing_fields": []
+}

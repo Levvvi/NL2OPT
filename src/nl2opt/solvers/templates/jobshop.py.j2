@@ -1,0 +1,148 @@
+import json
+import time
+
+from ortools.sat.python import cp_model
+
+
+SPEC = {{ spec_json }}
+
+
+def write_solution(result):
+    with open("solution.json", "w", encoding="utf-8") as output_file:
+        json.dump(result, output_file, indent=2)
+
+
+def main():
+    start_time = time.perf_counter()
+
+    try:
+        model = cp_model.CpModel()
+        horizon = sum(
+            operation["duration"]
+            for job in SPEC["jobs"]
+            for operation in job["operations"]
+        )
+
+        operations = {}
+        intervals_by_machine = {
+            machine["name"]: []
+            for machine in SPEC["machines"]
+        }
+
+        for job in SPEC["jobs"]:
+            job_name = job["name"]
+            for op_index, operation in enumerate(job["operations"]):
+                suffix = f"{job_name}_{op_index}"
+                duration = operation["duration"]
+                start = model.NewIntVar(0, horizon, f"start_{suffix}")
+                end = model.NewIntVar(0, horizon, f"end_{suffix}")
+                interval = model.NewIntervalVar(start, duration, end, f"interval_{suffix}")
+                record = {
+                    "job": job_name,
+                    "op_index": op_index,
+                    "machine": operation["machine"],
+                    "duration": duration,
+                    "start": start,
+                    "end": end,
+                    "interval": interval,
+                }
+                operations[(job_name, op_index)] = record
+                intervals_by_machine[operation["machine"]].append(interval)
+
+        for job in SPEC["jobs"]:
+            job_name = job["name"]
+            for op_index in range(len(job["operations"]) - 1):
+                current_op = operations[(job_name, op_index)]
+                next_op = operations[(job_name, op_index + 1)]
+                model.Add(next_op["start"] >= current_op["end"])
+
+        for machine_name, intervals in intervals_by_machine.items():
+            model.AddNoOverlap(intervals)
+
+        makespan = model.NewIntVar(0, horizon, "makespan")
+        final_ends = [
+            operations[(job["name"], len(job["operations"]) - 1)]["end"]
+            for job in SPEC["jobs"]
+        ]
+        model.AddMaxEquality(makespan, final_ends)
+        model.Minimize(makespan)
+
+        solver = cp_model.CpSolver()
+        solver.parameters.max_time_in_seconds = 10.0
+        status_code = solver.Solve(model)
+        status_map = {
+            cp_model.OPTIMAL: "OPTIMAL",
+            cp_model.FEASIBLE: "FEASIBLE",
+            cp_model.INFEASIBLE: "INFEASIBLE",
+            cp_model.MODEL_INVALID: "ERROR",
+            cp_model.UNKNOWN: "ERROR",
+        }
+        status = status_map.get(status_code, "ERROR")
+
+        solution = {}
+        objective_value = None
+        if status in {"OPTIMAL", "FEASIBLE"}:
+            operation_results = []
+            machine_schedules = {
+                machine["name"]: []
+                for machine in SPEC["machines"]
+            }
+
+            for job in SPEC["jobs"]:
+                job_name = job["name"]
+                for op_index, operation in enumerate(job["operations"]):
+                    record = operations[(job_name, op_index)]
+                    op_result = {
+                        "job": job_name,
+                        "op_index": op_index,
+                        "machine": operation["machine"],
+                        "start": solver.Value(record["start"]),
+                        "end": solver.Value(record["end"]),
+                        "duration": operation["duration"],
+                    }
+                    operation_results.append(op_result)
+                    machine_schedules[operation["machine"]].append(
+                        {
+                            "job": job_name,
+                            "op_index": op_index,
+                            "start": op_result["start"],
+                            "end": op_result["end"],
+                            "duration": op_result["duration"],
+                        }
+                    )
+
+            for schedule in machine_schedules.values():
+                schedule.sort(key=lambda item: (item["start"], item["end"], item["job"], item["op_index"]))
+
+            objective_value = solver.Value(makespan)
+            solution = {
+                "makespan": objective_value,
+                "operations": operation_results,
+                "machine_schedules": machine_schedules,
+            }
+
+        write_solution(
+            {
+                "status": status,
+                "objective_value": objective_value,
+                "solution": solution,
+                "runtime_sec": time.perf_counter() - start_time,
+                "solver": "ortools.cp_sat",
+                "violations": [] if status in {"OPTIMAL", "FEASIBLE"} else [status],
+            }
+        )
+    except Exception as exc:
+        write_solution(
+            {
+                "status": "ERROR",
+                "objective_value": None,
+                "solution": {},
+                "runtime_sec": time.perf_counter() - start_time,
+                "solver": "ortools.cp_sat",
+                "violations": [str(exc)],
+            }
+        )
+
+
+if __name__ == "__main__":
+    main()

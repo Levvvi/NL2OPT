@@ -1,0 +1,41 @@
+{
+  "problem_id": "assignment_tiny",
+  "problem_type": "assignment",
+  "objective": {
+    "sense": "minimize",
+    "name": "cost"
+  },
+  "employees": [
+    {
+      "name": "E1",
+      "capacity": 1
+    },
+    {
+      "name": "E2",
+      "capacity": 1
+    }
+  ],
+  "tasks": [
+    {
+      "name": "A"
+    },
+    {
+      "name": "B"
+    }
+  ],
+  "costs": {
+    "E1": {
+      "A": 3,
+      "B": 8
+    },
+    "E2": {
+      "A": 6,
+      "B": 2
+    }
+  },
+  "assumptions": [
+    "每个任务必须分配给且仅分配给一名员工",
+    "员工最多承担 capacity 个任务"
+  ],
+  "missing_fields": []
+}

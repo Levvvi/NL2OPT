@@ -1,0 +1,28 @@
+{
+  "problem_id": "production_medium_02",
+  "problem_type": "production",
+  "objective": {
+    "sense": "maximize",
+    "name": "profit"
+  },
+  "products": [
+    {"name": "juice", "profit": 20},
+    {"name": "tea", "profit": 18},
+    {"name": "smoothie", "profit": 30}
+  ],
+  "resources": [
+    {"name": "mixing", "capacity": 100},
+    {"name": "packaging", "capacity": 80},
+    {"name": "fruit", "capacity": 60}
+  ],
+  "consumption": {
+    "juice": {"mixing": 2, "packaging": 1, "fruit": 3},
+    "tea": {"mixing": 1, "packaging": 1, "fruit": 0},
+    "smoothie": {"mixing": 3, "packaging": 2, "fruit": 4}
+  },
+  "assumptions": [
+    "Product quantities are non-negative integers.",
+    "Profit is linear in production quantity."
+  ],
+  "missing_fields": []
+}

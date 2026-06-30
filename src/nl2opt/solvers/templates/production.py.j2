@@ -1,0 +1,128 @@
+import json
+import time
+
+from ortools.linear_solver import pywraplp
+
+
+SPEC = {{ spec_json }}
+
+
+def write_solution(result):
+    with open("solution.json", "w", encoding="utf-8") as output_file:
+        json.dump(result, output_file, indent=2)
+
+
+def create_solver():
+    for solver_name in ("SCIP", "CBC_MIXED_INTEGER_PROGRAMMING", "CBC"):
+        solver = pywraplp.Solver.CreateSolver(solver_name)
+        if solver is not None:
+            return solver, solver_name
+    return None, ""
+
+
+def normalize_number(value):
+    rounded = round(value)
+    if abs(value - rounded) <= 1e-9:
+        return int(rounded)
+    return value
+
+
+def main():
+    start = time.perf_counter()
+
+    try:
+        solver, solver_name = create_solver()
+        if solver is None:
+            write_solution(
+                {
+                    "status": "ERROR",
+                    "objective_value": None,
+                    "solution": {},
+                    "runtime_sec": time.perf_counter() - start,
+                    "solver": "ortools.linear_solver",
+                    "violations": ["No OR-Tools linear solver is available."],
+                }
+            )
+            return
+
+        quantities = {
+            product["name"]: solver.IntVar(0, solver.infinity(), product["name"])
+            for product in SPEC["products"]
+        }
+
+        for resource in SPEC["resources"]:
+            resource_name = resource["name"]
+            solver.Add(
+                solver.Sum(
+                    SPEC["consumption"][product["name"]].get(resource_name, 0)
+                    * quantities[product["name"]]
+                    for product in SPEC["products"]
+                )
+                <= resource["capacity"]
+            )
+
+        objective = solver.Sum(
+            product["profit"] * quantities[product["name"]]
+            for product in SPEC["products"]
+        )
+        if SPEC["objective"]["sense"] == "maximize":
+            solver.Maximize(objective)
+        else:
+            solver.Minimize(objective)
+
+        status_code = solver.Solve()
+        status_map = {
+            pywraplp.Solver.OPTIMAL: "OPTIMAL",
+            pywraplp.Solver.FEASIBLE: "FEASIBLE",
+            pywraplp.Solver.INFEASIBLE: "INFEASIBLE",
+        }
+        status = status_map.get(status_code, "ERROR")
+
+        solution = {}
+        objective_value = None
+        if status in {"OPTIMAL", "FEASIBLE"}:
+            quantity_values = {
+                name: normalize_number(variable.solution_value())
+                for name, variable in quantities.items()
+            }
+            resource_usage = {
+                resource["name"]: normalize_number(
+                    sum(
+                        SPEC["consumption"][product["name"]].get(resource["name"], 0)
+                        * quantity_values[product["name"]]
+                        for product in SPEC["products"]
+                    )
+                )
+                for resource in SPEC["resources"]
+            }
+            solution = {
+                "quantities": quantity_values,
+                "resource_usage": resource_usage,
+            }
+            objective_value = normalize_number(solver.Objective().Value())
+
+        write_solution(
+            {
+                "status": status,
+                "objective_value": objective_value,
+                "solution": solution,
+                "runtime_sec": time.perf_counter() - start,
+                "solver": f"ortools.linear_solver:{solver_name}",
+                "violations": [] if status in {"OPTIMAL", "FEASIBLE"} else [status],
+            }
+        )
+    except Exception as exc:
+        write_solution(
+            {
+                "status": "ERROR",
+                "objective_value": None,
+                "solution": {},
+                "runtime_sec": time.perf_counter() - start,
+                "solver": "ortools.linear_solver",
+                "violations": [str(exc)],
+            }
+        )
+
+
+if __name__ == "__main__":
+    main()

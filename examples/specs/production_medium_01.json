@@ -1,0 +1,27 @@
+{
+  "problem_id": "production_medium_01",
+  "problem_type": "production",
+  "objective": {
+    "sense": "maximize",
+    "name": "profit"
+  },
+  "products": [
+    {"name": "P1", "profit": 50},
+    {"name": "P2", "profit": 40},
+    {"name": "P3", "profit": 30}
+  ],
+  "resources": [
+    {"name": "labor", "capacity": 120},
+    {"name": "material", "capacity": 100}
+  ],
+  "consumption": {
+    "P1": {"labor": 3, "material": 2},
+    "P2": {"labor": 2, "material": 3},
+    "P3": {"labor": 1, "material": 1}
+  },
+  "assumptions": [
+    "Product quantities are non-negative integers.",
+    "Profit is linear in production quantity."
+  ],
+  "missing_fields": []
+}
