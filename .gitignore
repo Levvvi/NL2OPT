@@ -11,6 +11,8 @@ ENV/
 
 .pytest_cache/
 .tmp_pytest_cache/
+.tmp_pytest_basetemp/
+.worktrees/
 .coverage
 htmlcov/
 *.log
