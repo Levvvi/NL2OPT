@@ -30,6 +30,8 @@ _REQUIRED_RESULT_FIELDS = {
 }
 _REQUIRED_AUDIT_FIELDS = {"dataset", "item_id", "repetition", "numbers_match", "human_audit_status"}
 _COMPLETE_AUDIT_STATUSES = {"approved", "rejected", "waived"}
+_PUBLIC_AUDIT_FRACTION = 0.10
+_PUBLIC_REPETITIONS = 3
 
 
 def wilson_interval(successes: int, total: int, z: float = 1.96) -> tuple[float, float]:
@@ -109,6 +111,98 @@ def _audit_summary(audit_rows: list[dict[str, str]]) -> Counter[str]:
     return statuses
 
 
+def _public_dataset_names(manifest: dict[str, Any]) -> tuple[str, ...]:
+    scope = manifest.get("dataset")
+    scopes = {
+        "all": ("nl4opt", "industryor"),
+        "nl4opt": ("nl4opt",),
+        "industryor": ("industryor",),
+    }
+    if scope not in scopes:
+        raise ValueError("run manifest has an invalid public dataset scope")
+    dataset_names = scopes[scope]
+    if set(manifest["datasets"]) != set(dataset_names):
+        raise ValueError("run manifest dataset entries do not match the requested public scope")
+    return dataset_names
+
+
+def _result_key(row: dict[str, str]) -> tuple[str, str, str, int, str]:
+    try:
+        repetition = int(row["repetition"])
+    except ValueError as exc:
+        raise ValueError(f"invalid repetition value: {row['repetition']!r}") from exc
+    return (
+        row["dataset"].strip().lower(),
+        row["item_id"].strip(),
+        row["track"].strip().lower(),
+        repetition,
+        row["checker_retry"].strip().lower(),
+    )
+
+
+def _validate_public_matrix(result_rows: list[dict[str, str]], manifest: dict[str, Any]) -> None:
+    """Reject artifacts that are not a complete, standard public run."""
+
+    try:
+        audit_fraction = float(manifest["translation_audit_fraction"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("public reports require an audit fraction of exactly 0.10") from exc
+    if audit_fraction != _PUBLIC_AUDIT_FRACTION:
+        raise ValueError("public reports require an audit fraction of exactly 0.10")
+    if "limit" not in manifest or manifest["limit"] is not None:
+        raise ValueError("public reports reject any run with a limit")
+    if manifest.get("track") != "all":
+        raise ValueError("public reports require both en and zh tracks")
+    if manifest.get("repetitions") != _PUBLIC_REPETITIONS:
+        raise ValueError("public reports require exactly 3 repetitions")
+    retry_mode = manifest.get("checker_retry")
+    if retry_mode not in {"on", "off"}:
+        raise ValueError("run manifest has an invalid checker-retry scope")
+
+    dataset_names = _public_dataset_names(manifest)
+    selected_item_ids = manifest.get("selected_item_ids")
+    if not isinstance(selected_item_ids, dict) or set(selected_item_ids) != set(dataset_names):
+        raise ValueError("run manifest has no complete selected-item scope for the public matrix")
+
+    expected_keys: set[tuple[str, str, str, int, str]] = set()
+    for dataset_name in dataset_names:
+        entry = manifest["datasets"][dataset_name]
+        if not isinstance(entry, dict):
+            raise ValueError("run manifest has an invalid dataset entry")
+        try:
+            expected_count = int(entry["expected_nonblank_rows"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("run manifest has no expected item count for the public matrix") from exc
+        item_ids = selected_item_ids[dataset_name]
+        if (
+            not isinstance(item_ids, list)
+            or not all(isinstance(item_id, str) and item_id for item_id in item_ids)
+            or len(item_ids) != expected_count
+            or len(set(item_ids)) != expected_count
+        ):
+            raise ValueError("public matrix scope does not contain every manifest item")
+        for item_id in item_ids:
+            for track in ("en", "zh"):
+                for repetition in range(1, _PUBLIC_REPETITIONS + 1):
+                    expected_keys.add((dataset_name, item_id, track, repetition, retry_mode))
+
+    observed_keys: set[tuple[str, str, str, int, str]] = set()
+    for row in result_rows:
+        key = _result_key(row)
+        if key in observed_keys:
+            raise ValueError("public benchmark matrix contains a duplicate result key")
+        observed_keys.add(key)
+    if observed_keys != expected_keys:
+        missing = expected_keys - observed_keys
+        unexpected = observed_keys - expected_keys
+        details = []
+        if missing:
+            details.append(f"missing {len(missing)} rows")
+        if unexpected:
+            details.append(f"unexpected {len(unexpected)} rows")
+        raise ValueError(f"public benchmark matrix is incomplete or mismatched ({', '.join(details)})")
+
+
 def _validate_audit_coverage(
     result_rows: list[dict[str, str]], audit_rows: list[dict[str, str]], manifest: dict[str, Any]
 ) -> None:
@@ -177,7 +271,7 @@ def _metadata_label(row: dict[str, str], primary: str, alternate: str, default: 
 
 
 def _table(headers: tuple[str, ...], rows: list[tuple[str, ...]]) -> list[str]:
-    left_aligned = {"Dataset", "Track", "Difficulty", "Type", "Status", "Mode"}
+    left_aligned = {"数据集", "语言轨道", "难度", "类型", "状态", "模式", "阈值"}
     separator = tuple("---" if header in left_aligned else "---:" for header in headers)
     return [
         "| " + " | ".join(headers) + " |",
@@ -188,8 +282,7 @@ def _table(headers: tuple[str, ...], rows: list[tuple[str, ...]]) -> list[str]:
 
 def _dataset_references(manifest: dict[str, Any]) -> list[str]:
     lines = [
-        "No external benchmark performance value is used in this report. Any future comparison must cite the "
-        "primary source, the exact protocol, and the matching metric in this separate section.",
+        "本报告未使用外部基准性能数值。未来如加入比较，必须在本节中列出原始来源、完全一致的评测协议和对应指标。",
         "",
     ]
     for dataset, entry in sorted(manifest["datasets"].items()):
@@ -198,7 +291,7 @@ def _dataset_references(manifest: dict[str, Any]) -> list[str]:
         url = entry.get("url", "source URL not recorded")
         revision = entry.get("revision", "revision not recorded")
         license_name = entry.get("license", "license not recorded")
-        lines.append(f"- `{dataset}` pinned dataset source: {url} (revision `{revision}`, license `{license_name}`).")
+        lines.append(f"- `{dataset}` 固定数据集来源：{url}（修订版 `{revision}`，许可证 `{license_name}`）。")
     return lines
 
 
@@ -213,6 +306,7 @@ def render_benchmark_report(results_csv: Path, run_manifest: Path, audit_csv: Pa
     result_rows = _read_csv(Path(results_csv), _REQUIRED_RESULT_FIELDS, "benchmark results")
     manifest = _read_manifest(Path(run_manifest))
     audit_rows = _read_csv(Path(audit_csv), _REQUIRED_AUDIT_FIELDS, "translation audit")
+    _validate_public_matrix(result_rows, manifest)
     audit_statuses = _audit_summary(audit_rows)
     _validate_audit_coverage(result_rows, audit_rows, manifest)
 
@@ -271,66 +365,74 @@ def render_benchmark_report(results_csv: Path, run_manifest: Path, audit_csv: Pa
         rerun_count = sum(_as_bool(row["checker_retried"], field="checker_retried") for row in rows)
         retry_rows.append((mode, str(successes), str(len(rows)), _rate(successes, len(rows)), str(rerun_count)))
 
-    audit_summary_text = ", ".join(f"{status}: {count}" for status, count in sorted(audit_statuses.items()))
+    audit_status_labels = {"approved": "已批准", "rejected": "已拒绝", "waived": "已豁免"}
+    audit_summary_text = "，".join(
+        f"{audit_status_labels[status]}：{count}" for status, count in sorted(audit_statuses.items())
+    )
+    retry_mode_labels = {"on": "开启", "off": "关闭", "unlabelled": "未标注"}
+    retry_rows = [
+        (retry_mode_labels.get(mode, mode), successes, attempts, rate, reruns)
+        for mode, successes, attempts, rate, reruns in retry_rows
+    ]
     lines = [
-        "# Public Benchmark Report",
+        "# 公共基准测试报告",
         "",
-        "## Executive summary",
+        "## English executive summary",
         "",
-        f"This audited report summarizes {total} recorded attempts from run `{manifest.get('run_id', 'unknown')}`. "
-        f"The strict 1e-6 result is {strict_successes}/{total} ({_rate(strict_successes, total)}); all outcomes remain in the denominator.",
-        f"The deterministic Chinese translation sample is complete ({audit_summary_text}).",
+        f"This audited public run contains {total} attempts from `{manifest.get('run_id', 'unknown')}`. "
+        f"Strict 1e-6 success is {strict_successes}/{total} ({_rate(strict_successes, total)}); every outcome stays in the denominator.",
         "",
-        "## 中文结果摘要",
+        "## 中文执行摘要",
         "",
-        f"本报告基于已完成的人工翻译审计，汇总 {total} 次记录尝试。严格 1e-6 通过数为 "
-        f"{strict_successes}/{total}（{_rate(strict_successes, total)}）；所有失败均保留在分母中。",
+        f"本次已审计公开运行包含 {total} 次尝试，严格 1e-6 通过数为 {strict_successes}/{total}"
+        f"（{_rate(strict_successes, total)}）；所有结果均保留在分母中。",
+        f"确定性的中文翻译抽样已完成：{audit_summary_text}。",
         "",
-        "## Dual-track results",
+        "## 双轨结果",
         "",
-        *_table(("Dataset", "Track", "Attempts", "Strict pass", "Rate"), dual_track_rows),
+        *_table(("数据集", "语言轨道", "尝试次数", "严格通过", "通过率"), dual_track_rows),
         "",
-        "## Per-repetition Wilson intervals",
+        "## 按重复次数的 Wilson 置信区间",
         "",
-        *_table(("Repetition", "Attempts", "Strict pass", "Rate", "95% Wilson interval"), repetition_rows),
+        *_table(("重复次数", "尝试次数", "严格通过", "通过率", "95% Wilson 区间"), repetition_rows),
         "",
-        "## IndustryOR type/difficulty decomposition",
+        "## IndustryOR 类型/难度分解",
         "",
-        "Type and difficulty are read only from recorded result metadata; `unlabelled` means the source artifact did not provide that label.",
+        "类型与难度只读取结果工件中记录的元数据；`unlabelled` 表示源工件没有提供该标签。",
         "",
-        *_table(("Difficulty", "Type", "Attempts", "Strict pass", "Rate"), industryor_rows),
+        *_table(("难度", "类型", "尝试次数", "严格通过", "通过率"), industryor_rows),
         "",
-        "## Failure distribution",
+        "## 失败分布",
         "",
         *_table(
-            ("Status", "Count"),
-            [(status, str(count)) for status, count in sorted(failure_statuses.items())] or [("none", "0")],
+            ("状态", "数量"),
+            [(status, str(count)) for status, count in sorted(failure_statuses.items())] or [("无", "0")],
         ),
         "",
-        "## 1e-4 sensitivity",
+        "## 1e-4 敏感性",
         "",
         *_table(
-            ("Threshold", "Successes", "Attempts", "Rate"),
+            ("阈值", "成功数", "尝试次数", "通过率"),
             [
-                ("strict 1e-6", str(strict_successes), str(total), _rate(strict_successes, total)),
-                ("loose 1e-4", str(loose_successes), str(total), _rate(loose_successes, total)),
+                ("严格 1e-6", str(strict_successes), str(total), _rate(strict_successes, total)),
+                ("宽松 1e-4", str(loose_successes), str(total), _rate(loose_successes, total)),
             ],
         ),
         "",
-        "## Checker-retry ablation",
+        "## Checker 重试消融",
         "",
-        "This table is descriptive. It compares only retry modes present in the supplied CSV and makes no causal claim when a matched mode is absent.",
+        "本表仅描述所提供 CSV 中实际出现的重试模式；若没有配对模式，不作因果解释。",
         "",
-        *_table(("Mode", "Strict pass", "Attempts", "Rate", "Checker reruns"), retry_rows),
+        *_table(("模式", "严格通过", "尝试次数", "通过率", "Checker 重跑次数"), retry_rows),
         "",
-        "## Limitations",
+        "## 局限性",
         "",
-        "1. Results apply only to the manifest-pinned dataset revisions, model configuration, timeout, and prompt version recorded by the run; they do not establish general optimization-modeling ability.",
-        "2. Chinese translation quality is checked on a deterministic sample, not every translation; the audit gate prevents publication while that sample is pending or has Arabic-number mismatches.",
-        "3. Objective matching and checker verification are necessary but do not make unsupported, nonlinear, stochastic, or otherwise unrepresentable source problems solvable; such outcomes remain failures in the denominator.",
-        "4. Checker-retry rows can describe a configured ablation only when both matched retry modes are recorded; they cannot by themselves prove that retry caused a difference.",
+        "1. 结果只适用于运行清单固定的数据集修订版、模型配置、超时和提示词版本，不能证明通用优化建模能力。",
+        "2. 中文翻译质量只对确定性样本进行检查，而不是检查每一条翻译；审计待完成或阿拉伯数字不一致时，发布门禁会阻止生成报告。",
+        "3. 目标值匹配和 checker 验证是必要条件，但不会使不受支持、非线性、随机性或其他不可表示的问题变得可解；这些结果仍计入失败分母。",
+        "4. 只有同时记录配对的重试模式时，重试行才能描述配置消融；它们本身不能证明重试导致了差异。",
         "",
-        "## Literature and dataset references",
+        "## 文献与数据集来源",
         "",
         *_dataset_references(manifest),
         "",

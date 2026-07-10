@@ -45,23 +45,27 @@ def _write_inputs(
                 "run_id": "unit-test",
                 "dataset": "all",
                 "track": "all",
-                "repetitions": 2,
+                "repetitions": 3,
                 "checker_retry": "on",
+                "limit": None,
                 "timeout_sec": 60,
                 "tolerance": 1e-6,
                 "translation_audit_fraction": 0.10,
                 "datasets": {
                     "nl4opt": {
+                        "expected_nonblank_rows": 1,
                         "url": "https://example.test/nl4opt",
                         "revision": "pinned-nl4opt",
                         "license": "Apache-2.0",
                     },
                     "industryor": {
+                        "expected_nonblank_rows": 1,
                         "url": "https://example.test/industryor",
                         "revision": "pinned-industryor",
                         "license": "Apache-2.0",
                     },
                 },
+                "selected_item_ids": {"nl4opt": ["n-1"], "industryor": ["i-1"]},
             },
             indent=2,
         ),
@@ -69,7 +73,11 @@ def _write_inputs(
     )
 
     audit = tmp_path / "translation_audit.csv"
-    audit_items = audit_items or [("nl4opt", "n-1", 1), ("industryor", "i-1", 1), ("industryor", "i-2", 2)]
+    audit_items = audit_items or [
+        (dataset, item_id, repetition)
+        for dataset, item_id in (("nl4opt", "n-1"), ("industryor", "i-1"))
+        for repetition in range(1, 4)
+    ]
     with audit.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(
             handle,
@@ -98,88 +106,40 @@ def _write_inputs(
 
 
 def _result_rows() -> list[dict[str, object]]:
-    return [
-        {
-            "dataset": "nl4opt",
-            "item_id": "n-1",
-            "track": "en",
-            "repetition": 1,
-            "checker_retry": "on",
-            "status": "OPTIMAL",
-            "passed_1e_6": True,
-            "passed_1e_4": True,
-            "checker_retried": False,
-            "judgment_reason": "objective_match",
-        },
-        {
-            "dataset": "nl4opt",
-            "item_id": "n-1",
-            "track": "zh",
-            "repetition": 1,
-            "checker_retry": "on",
-            "status": "OPTIMAL",
-            "passed_1e_6": True,
-            "passed_1e_4": True,
-            "checker_retried": False,
-            "judgment_reason": "objective_match",
-        },
-        {
-            "dataset": "industryor",
-            "item_id": "i-1",
-            "track": "en",
-            "repetition": 1,
-            "checker_retry": "on",
-            "status": "OPTIMAL",
-            "passed_1e_6": True,
-            "passed_1e_4": True,
-            "checker_retried": False,
-            "judgment_reason": "objective_match",
-            "difficulty": "Easy",
-            "problem_type": "linear_programming",
-        },
-        {
-            "dataset": "industryor",
-            "item_id": "i-1",
-            "track": "zh",
-            "repetition": 1,
-            "checker_retry": "on",
-            "status": "EXTRACTION_ERROR",
-            "passed_1e_6": False,
-            "passed_1e_4": False,
-            "checker_retried": True,
-            "judgment_reason": "checker_failed",
-            "difficulty": "Easy",
-            "problem_type": "linear_programming",
-        },
-        {
-            "dataset": "industryor",
-            "item_id": "i-2",
-            "track": "en",
-            "repetition": 2,
-            "checker_retry": "off",
-            "status": "OPTIMAL",
-            "passed_1e_6": False,
-            "passed_1e_4": True,
-            "checker_retried": False,
-            "judgment_reason": "objective_mismatch",
-            "difficulty": "Hard",
-            "problem_type": "integer_programming",
-        },
-        {
-            "dataset": "industryor",
-            "item_id": "i-2",
-            "track": "zh",
-            "repetition": 2,
-            "checker_retry": "off",
-            "status": "OPTIMAL",
-            "passed_1e_6": True,
-            "passed_1e_4": True,
-            "checker_retried": True,
-            "judgment_reason": "objective_match",
-            "difficulty": "Hard",
-            "problem_type": "integer_programming",
-        },
-    ]
+    rows = []
+    for repetition in range(1, 4):
+        for dataset, item_id in (("nl4opt", "n-1"), ("industryor", "i-1")):
+            for track in ("en", "zh"):
+                strict_passed = True
+                loose_passed = True
+                status = "OPTIMAL"
+                reason = "objective_match"
+                checker_retried = False
+                if (dataset, track, repetition) == ("industryor", "zh", 1):
+                    strict_passed = False
+                    loose_passed = False
+                    status = "EXTRACTION_ERROR"
+                    reason = "checker_failed"
+                    checker_retried = True
+                elif (dataset, track, repetition) == ("industryor", "en", 2):
+                    strict_passed = False
+                    reason = "objective_mismatch"
+                row: dict[str, object] = {
+                    "dataset": dataset,
+                    "item_id": item_id,
+                    "track": track,
+                    "repetition": repetition,
+                    "checker_retry": "on",
+                    "status": status,
+                    "passed_1e_6": strict_passed,
+                    "passed_1e_4": loose_passed,
+                    "checker_retried": checker_retried,
+                    "judgment_reason": reason,
+                }
+                if dataset == "industryor":
+                    row.update({"difficulty": "Easy", "problem_type": "linear_programming"})
+                rows.append(row)
+    return rows
 
 
 def test_wilson_interval_for_all_successes_is_bounded() -> None:
@@ -223,6 +183,77 @@ def test_report_refuses_missing_deterministic_audit_row(tmp_path: Path) -> None:
         render_benchmark_report(results, manifest, audit, tmp_path / "report.md")
 
 
+def test_report_requires_exactly_ten_percent_audit_fraction(tmp_path: Path) -> None:
+    results, manifest, audit = _write_inputs(tmp_path, rows=_result_rows(), audit_status="approved")
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    payload["translation_audit_fraction"] = 0.01
+    manifest.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="0.10"):
+        render_benchmark_report(results, manifest, audit, tmp_path / "report.md")
+
+
+def test_report_refuses_limited_run(tmp_path: Path) -> None:
+    results, manifest, audit = _write_inputs(tmp_path, rows=_result_rows(), audit_status="approved")
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    payload["limit"] = 1
+    manifest.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="limit"):
+        render_benchmark_report(results, manifest, audit, tmp_path / "report.md")
+
+
+def test_report_requires_both_tracks(tmp_path: Path) -> None:
+    results, manifest, audit = _write_inputs(tmp_path, rows=_result_rows(), audit_status="approved")
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    payload["track"] = "en"
+    manifest.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="both en and zh"):
+        render_benchmark_report(results, manifest, audit, tmp_path / "report.md")
+
+
+def test_report_requires_exactly_three_repetitions(tmp_path: Path) -> None:
+    results, manifest, audit = _write_inputs(tmp_path, rows=_result_rows(), audit_status="approved")
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    payload["repetitions"] = 2
+    manifest.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="exactly 3"):
+        render_benchmark_report(results, manifest, audit, tmp_path / "report.md")
+
+
+def test_report_refuses_incomplete_public_matrix(tmp_path: Path) -> None:
+    results, manifest, audit = _write_inputs(tmp_path, rows=_result_rows()[:-1], audit_status="approved")
+
+    with pytest.raises(ValueError, match="matrix"):
+        render_benchmark_report(results, manifest, audit, tmp_path / "report.md")
+
+
+def test_report_refuses_duplicate_public_matrix_key(tmp_path: Path) -> None:
+    rows = _result_rows()
+    results, manifest, audit = _write_inputs(tmp_path, rows=rows + [rows[0]], audit_status="approved")
+
+    with pytest.raises(ValueError, match="duplicate"):
+        render_benchmark_report(results, manifest, audit, tmp_path / "report.md")
+
+
+def test_report_uses_chinese_primary_body(tmp_path: Path) -> None:
+    results, manifest, audit = _write_inputs(tmp_path, rows=_result_rows(), audit_status="approved")
+    output = tmp_path / "report.md"
+
+    render_benchmark_report(results, manifest, audit, output)
+
+    report = output.read_text(encoding="utf-8")
+    assert "## English executive summary" in report
+    assert "## 双轨结果" in report
+    assert "| 数据集 | 语言轨道 | 尝试次数 | 严格通过 | 通过率 |" in report
+    assert "## 按重复次数的 Wilson 置信区间" in report
+    assert "## 局限性" in report
+    assert "## 文献与数据集来源" in report
+    assert "## Dual-track results" not in report
+
+
 def test_report_renders_audited_dual_track_snapshot(tmp_path: Path) -> None:
     results, manifest, audit = _write_inputs(tmp_path, rows=_result_rows(), audit_status="approved")
     output = tmp_path / "report.md"
@@ -231,27 +262,24 @@ def test_report_renders_audited_dual_track_snapshot(tmp_path: Path) -> None:
 
     assert rendered == output
     report = output.read_text(encoding="utf-8")
-    assert "# Public Benchmark Report" in report
-    assert "## Executive summary" in report
-    assert "## 中文结果摘要" in report
-    assert "## Dual-track results" in report
-    assert "| industryor | zh | 2 | 1 | 50.0% |" in report
-    assert "## Per-repetition Wilson intervals" in report
+    assert "# 公共基准测试报告" in report
+    assert "## English executive summary" in report
+    assert "## 双轨结果" in report
+    assert "| industryor | zh | 3 | 2 | 66.7% |" in report
+    assert "## 按重复次数的 Wilson 置信区间" in report
     assert "| 1 | 4 | 3 | 75.0% |" in report
-    assert "## IndustryOR type/difficulty decomposition" in report
-    assert "| Easy | linear_programming | 2 | 1 | 50.0% |" in report
-    assert "| Hard | integer_programming | 2 | 1 | 50.0% |" in report
-    assert "## Failure distribution" in report
+    assert "## IndustryOR 类型/难度分解" in report
+    assert "| Easy | linear_programming | 6 | 4 | 66.7% |" in report
+    assert "## 失败分布" in report
     assert "| EXTRACTION_ERROR | 1 |" in report
-    assert "## 1e-4 sensitivity" in report
-    assert "| strict 1e-6 | 4 | 6 | 66.7% |" in report
-    assert "| loose 1e-4 | 5 | 6 | 83.3% |" in report
-    assert "## Checker-retry ablation" in report
-    assert "| on | 3 | 4 | 75.0% |" in report
-    assert "| off | 1 | 2 | 50.0% |" in report
-    assert "## Limitations" in report
-    assert "## Literature and dataset references" in report
-    assert "No external benchmark performance value is used" in report
+    assert "## 1e-4 敏感性" in report
+    assert "| 严格 1e-6 | 10 | 12 | 83.3% |" in report
+    assert "| 宽松 1e-4 | 11 | 12 | 91.7% |" in report
+    assert "## Checker 重试消融" in report
+    assert "| 开启 | 10 | 12 | 83.3% |" in report
+    assert "## 局限性" in report
+    assert "## 文献与数据集来源" in report
+    assert "本报告未使用外部基准性能数值" in report
     assert "https://example.test/nl4opt" in report
 
 

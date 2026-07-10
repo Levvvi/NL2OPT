@@ -737,6 +737,7 @@ def _write_run_manifest(
     path: Path,
     config: BenchmarkRunConfig,
     dataset_names: tuple[str, ...],
+    items: list[BenchmarkItem],
 ) -> None:
     entries = {}
     for name in dataset_names:
@@ -750,10 +751,15 @@ def _write_run_manifest(
                 "track": config.track,
                 "repetitions": config.repetitions,
                 "checker_retry": "on" if config.checker_retry else "off",
+                "limit": config.limit,
                 "timeout_sec": config.timeout_sec,
                 "tolerance": config.tolerance,
                 "translation_audit_fraction": config.audit_fraction,
                 "datasets": entries,
+                "selected_item_ids": {
+                    dataset_name: [item.item_id for item in items if item.dataset == dataset_name]
+                    for dataset_name in dataset_names
+                },
             },
             ensure_ascii=False,
             indent=2,
@@ -773,7 +779,7 @@ def run_benchmark(config: BenchmarkRunConfig) -> Path:
     for dataset_name in dataset_names:
         items = load_benchmark_dataset(dataset_name, config.datasets_dir)
         all_items.extend(items[: config.limit] if config.limit is not None else items)
-    _write_run_manifest(run_manifest, config, dataset_names)
+    _write_run_manifest(run_manifest, config, dataset_names, all_items)
 
     existing_keys = _resume_keys(results_csv) if config.resume else set()
     audit_keys = _audit_item_keys(all_items, config.audit_fraction)

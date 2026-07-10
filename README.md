@@ -30,6 +30,10 @@ python -c "from pathlib import Path; from nl2opt.eval.bench_report import render
 The existing 20/20 result below is a separate, self-built Chinese evaluation;
 it is not a public-benchmark result.
 
+The renderer also rejects smoke or partial artifacts. A renderable public run
+must use both tracks, three repetitions, the fixed 10% audit fraction, no
+`--limit`, and a complete row for every pinned item/track/repetition key.
+
 NL2OPT 是一个面试级 MVP，用来验证“中文业务问题 -> 结构化优化模型 -> OR-Tools 求解 -> 独立校验 -> 评测报告”的闭环。用户可以输入中文生产计划、任务分配、作业车间排产或车辆路径配送问题，系统先用 Router 判断问题类型，再用 DeepSeek 抽取结构化 `ProblemSpec`。求解阶段不让 LLM 自由写 OR-Tools 代码，而是使用受控 Jinja2 模板生成模型代码并本地运行。求解结果会经过独立 checker 复核约束和目标值，并输出 pipeline/eval 报告和确定性中文解释。
 
 ## 核心亮点

@@ -352,6 +352,27 @@ def test_runner_records_industryor_metadata_needed_for_reporting(tmp_path: Path)
     assert row["problem_type"] == "generic_lp_milp"
 
 
+def test_runner_manifest_records_limit_and_selected_item_scope(tmp_path: Path) -> None:
+    datasets_dir = tmp_path / "datasets"
+    _write_dataset(datasets_dir, rows=_rows(2))
+
+    results = run_benchmark(
+        BenchmarkRunConfig(
+            datasets_dir=datasets_dir,
+            results_csv=tmp_path / "results.csv",
+            dataset="nl4opt",
+            track="en",
+            repetitions=1,
+            limit=1,
+            attempt_runner=_successful_attempt,
+        )
+    )
+
+    manifest = json.loads((results.parent / "run_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["limit"] == 1
+    assert manifest["selected_item_ids"] == {"nl4opt": ["item-0"]}
+
+
 def test_cli_exposes_the_benchmark_run_controls() -> None:
     args = build_parser().parse_args(
         [
