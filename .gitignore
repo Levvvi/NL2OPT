@@ -11,7 +11,7 @@ ENV/
 
 .pytest_cache/
 .tmp_pytest_cache/
-.tmp_pytest_basetemp/
+.tmp_pytest_basetemp*/
 .worktrees/
 .superpowers/
 .coverage
