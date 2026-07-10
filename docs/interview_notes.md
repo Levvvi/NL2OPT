@@ -4,6 +4,14 @@
 
 NL2OPT is a Chinese natural-language optimization modeling agent. It classifies a business problem, uses DeepSeek to extract a structured `ProblemSpec`, solves it with OR-Tools templates, and independently checks feasibility and objective consistency. The project covers production planning, task assignment, jobshop scheduling, and CVRP. In the final live eval with `deepseek-v4-flash`, `prompt_version=v3`, and `mock=false`, the self-built 20-case benchmark passes 20/20 end to end.
 
+## Public Benchmark Status
+
+NL4Opt/IndustryOR evaluation is a separate, pinned bilingual benchmark path.
+No public-benchmark rate, count, baseline comparison, or improvement claim is
+made until a real run has completed its deterministic Chinese translation audit
+and the report renderer has derived the figures from the recorded artifacts.
+This gate does not alter the separately scoped self-built 20-case result above.
+
 ## 2-minute Version
 
 Many business optimization problems are described in natural language, but solvers need structured data: entities, parameters, objectives, and constraints. NL2OPT bridges that gap for four common optimization families: production planning, task assignment, jobshop scheduling, and capacitated vehicle routing.

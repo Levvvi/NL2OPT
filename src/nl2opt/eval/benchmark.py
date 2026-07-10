@@ -53,6 +53,8 @@ _NUMBER_TOKEN_RE = re.compile(r"(?<![A-Za-z_])[+-]?\d+(?:,\d{3})*(?:\.\d+)?")
 _RESULT_FIELDS = (
     "dataset",
     "item_id",
+    "difficulty",
+    "problem_type",
     "track",
     "repetition",
     "checker_retry",
@@ -684,6 +686,18 @@ def _attempt_work_dir(attempt: BenchmarkAttempt | None) -> Path | None:
     return Path(value)
 
 
+def _attempt_problem_type(attempt: BenchmarkAttempt | None) -> str:
+    """Return extracted type metadata for later reporting without judging it."""
+
+    if attempt is None or attempt.spec is None:
+        return ""
+    if isinstance(attempt.spec, Mapping):
+        value = attempt.spec.get("problem_type", "")
+    else:
+        value = getattr(attempt.spec, "problem_type", "")
+    return str(getattr(value, "value", value)) if value is not None else ""
+
+
 def _write_failure_artifact(
     output_dir: Path,
     *,
@@ -883,6 +897,8 @@ def run_benchmark(config: BenchmarkRunConfig) -> Path:
                         {
                             "dataset": item.dataset,
                             "item_id": item.item_id,
+                            "difficulty": str(item.raw.get("difficulty", "")),
+                            "problem_type": _attempt_problem_type(attempt),
                             "track": track,
                             "repetition": repetition,
                             "checker_retry": checker_retry_value,

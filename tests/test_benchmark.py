@@ -310,6 +310,48 @@ def test_translation_audit_selection_is_deterministic_ten_percent(tmp_path: Path
     assert len(selected_items(first.parent / "translation_audit.csv")) == 1
 
 
+def test_runner_records_industryor_metadata_needed_for_reporting(tmp_path: Path) -> None:
+    datasets_dir = tmp_path / "datasets"
+    _write_dataset(
+        datasets_dir,
+        dataset="industryor",
+        rows=[
+            {
+                "id": "industry-1",
+                "en_question": "maximize x subject to x <= 1",
+                "en_answer": 1,
+                "difficulty": "Easy",
+            }
+        ],
+    )
+
+    class GenericSpec:
+        problem_type = "generic_lp_milp"
+
+    def successful_generic_attempt(*_args: object, **_kwargs: object) -> BenchmarkAttempt:
+        return BenchmarkAttempt(
+            status="OPTIMAL",
+            objective_value=1.0,
+            checker_passed=True,
+            spec=GenericSpec(),
+        )
+
+    results = run_benchmark(
+        BenchmarkRunConfig(
+            datasets_dir=datasets_dir,
+            results_csv=tmp_path / "results.csv",
+            dataset="industryor",
+            track="en",
+            repetitions=1,
+            attempt_runner=successful_generic_attempt,
+        )
+    )
+
+    row = next(csv.DictReader(results.open("r", newline="", encoding="utf-8")))
+    assert row["difficulty"] == "Easy"
+    assert row["problem_type"] == "generic_lp_milp"
+
+
 def test_cli_exposes_the_benchmark_run_controls() -> None:
     args = build_parser().parse_args(
         [

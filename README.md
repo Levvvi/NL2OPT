@@ -15,6 +15,21 @@ Rows, the run manifest, the deterministic Chinese translation audit sample,
 and failure-only artifacts are written beneath `eval/results/<run-id>/`.
 Resume an interrupted command by repeating it with `--resume`.
 
+### Publication gate
+
+This repository does not state an NL4Opt or IndustryOR success rate before a
+completed real run and human completion of the deterministic Chinese
+translation audit. The public renderer derives every aggregate from the
+recorded CSV and refuses pending or number-mismatched audit rows:
+
+```bash
+python -c "from pathlib import Path; from nl2opt.eval.bench_report import render_benchmark_report; render_benchmark_report(Path('eval/results/<run-id>/results.csv'), Path('eval/results/<run-id>/run_manifest.json'), Path('eval/results/<run-id>/translation_audit.csv'), Path('reports/bench_report.md'))"
+```
+
+`reports/bench_report.md` is therefore absent until that gate has succeeded.
+The existing 20/20 result below is a separate, self-built Chinese evaluation;
+it is not a public-benchmark result.
+
 NL2OPT 是一个面试级 MVP，用来验证“中文业务问题 -> 结构化优化模型 -> OR-Tools 求解 -> 独立校验 -> 评测报告”的闭环。用户可以输入中文生产计划、任务分配、作业车间排产或车辆路径配送问题，系统先用 Router 判断问题类型，再用 DeepSeek 抽取结构化 `ProblemSpec`。求解阶段不让 LLM 自由写 OR-Tools 代码，而是使用受控 Jinja2 模板生成模型代码并本地运行。求解结果会经过独立 checker 复核约束和目标值，并输出 pipeline/eval 报告和确定性中文解释。
 
 ## 核心亮点
