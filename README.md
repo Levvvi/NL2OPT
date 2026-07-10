@@ -51,6 +51,7 @@ NL2OPT 是一个面试级 MVP，用来验证“中文业务问题 -> 结构化�
 | `assignment` | 任务分配 | OR-Tools linear solver |
 | `jobshop` | 作业车间排产 | OR-Tools CP-SAT |
 | `vrp` | 车辆路径配送 CVRP | OR-Tools RoutingModel |
+| `generic_lp_milp` | 严格线性 LP/IP/MIP | 连续模型使用 GLOP；含整数变量使用 SCIP |
 
 ## 系统架构
 
@@ -200,8 +201,8 @@ labor 总容量 100，material 总容量 80。产品数量为非负整数，目�
 ## 项目边界
 
 - 这是面试级 MVP，不是工业级通用优化平台。
-- 当前只支持四类小规模问题：production、assignment、jobshop、vrp。
-- 不支持任意自然语言优化问题自动建模。
+- 当前支持四类小规模专用问题（production、assignment、jobshop、vrp）以及 `generic_lp_milp` 的 strictly linear LP/IP/MIP；连续模型使用 GLOP，含整数变量使用 SCIP。
+- nonlinear, stochastic, dynamic, and otherwise unsupported formulations are refused rather than silently modeled；不支持将任意自然语言优化问题静默自动建模。
 - 不开放公网执行任意代码。
 - 当前 runner 是本地 subprocess，不是 Docker 沙箱；复杂安全防护不是本阶段重点。
 - 当前 Streamlit UI 只用于本地演示，不包含登录、数据库、云部署或多用户权限系统。

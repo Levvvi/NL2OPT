@@ -28,12 +28,23 @@ _REQUIRED_RESULT_FIELDS = {
     "passed_1e_6",
     "passed_1e_4",
     "checker_retried",
+    "failure_category",
+    "extractor_provider",
+    "extractor_model",
+    "translation_usage",
+    "extractor_usage",
 }
 _REQUIRED_AUDIT_FIELDS = {"dataset", "item_id", "repetition", "numbers_match", "human_audit_status"}
 _COMPLETE_AUDIT_STATUSES = {"approved", "rejected", "waived"}
 _PUBLIC_AUDIT_FRACTION = 0.10
 _PUBLIC_REPETITIONS = 3
 _USAGE_TOKEN_FIELDS = ("prompt_tokens", "completion_tokens", "total_tokens")
+_PUBLIC_PROTOCOL_NUMBERS = {
+    "timeout_sec": 60,
+    "tolerance": 1e-6,
+    "temperature": 0.0,
+}
+_PUBLIC_DATASET_IDENTITY_FIELDS = ("sha256", "revision", "url", "license", "expected_nonblank_rows")
 
 
 def summarize_token_usage(rows: list[dict[str, str]]) -> dict[str, int]:
@@ -165,9 +176,95 @@ def _result_key(row: dict[str, str]) -> tuple[str, str, str, int, str]:
     )
 
 
+def _finite_number(value: Any, *, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise ValueError(f"run manifest field {field} must be a finite number")
+    return float(value)
+
+
+def _validate_public_protocol(manifest: dict[str, Any]) -> None:
+    """Fail closed unless every immutable public-run setting is exact."""
+
+    for field, expected in _PUBLIC_PROTOCOL_NUMBERS.items():
+        actual = _finite_number(manifest.get(field), field=field)
+        if actual != expected:
+            raise ValueError(f"public reports require {field} == {expected}")
+    if manifest.get("prompt_version") != "v4":
+        raise ValueError("public reports require prompt_version == 'v4'")
+    requested_model = manifest.get("requested_model")
+    if not isinstance(requested_model, str) or not requested_model.strip():
+        raise ValueError("public reports require a non-empty requested_model")
+
+
+def _dataset_identity(entry: Any, *, dataset: str) -> tuple[object, ...]:
+    if not isinstance(entry, dict):
+        raise ValueError(f"run manifest has an invalid dataset entry for {dataset}")
+    values: list[object] = []
+    for field in _PUBLIC_DATASET_IDENTITY_FIELDS:
+        value = entry.get(field)
+        if field == "expected_nonblank_rows":
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise ValueError(f"run manifest has an invalid {field} for {dataset}")
+        elif not isinstance(value, str) or not value.strip():
+            raise ValueError(f"run manifest has no {field} for {dataset}")
+        values.append(value)
+    return tuple(values)
+
+
+def _actual_extractor_identities(result_rows: list[dict[str, str]]) -> set[tuple[str, str]]:
+    """Return every recorded provider/model pair without inventing a default."""
+
+    identities: set[tuple[str, str]] = set()
+    for row in result_rows:
+        provider = row["extractor_provider"].strip()
+        model = row["extractor_model"].strip()
+        if bool(provider) != bool(model):
+            raise ValueError("actual extractor metadata must contain provider/model pairs")
+        if provider:
+            identities.add((provider, model))
+        if not row["failure_category"].strip():
+            raise ValueError("public reports require failure_category for every result row")
+    if not identities:
+        raise ValueError("public reports require non-empty actual extractor metadata")
+    return identities
+
+
+def _usage_summary_text(result_rows: list[dict[str, str]]) -> tuple[str, str]:
+    """Render only recorded token totals; unavailable remains explicit."""
+
+    totals = summarize_token_usage(result_rows)
+    labels: list[str] = []
+    for kind in ("translation", "extractor"):
+        recorded = False
+        for row in result_rows:
+            try:
+                usage = json.loads(row.get(f"{kind}_usage", ""))
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if isinstance(usage, dict):
+                recorded = True
+                break
+        if not recorded:
+            labels.append(f"{kind} tokens unavailable (not recorded)")
+            continue
+        labels.append(
+            f"{kind} total={totals[f'{kind}_total_tokens']} "
+            f"(prompt={totals[f'{kind}_prompt_tokens']}, completion={totals[f'{kind}_completion_tokens']})"
+        )
+    return labels[0], labels[1]
+
+
+def _recorded_time(manifest: dict[str, Any], field: str) -> str:
+    value = manifest.get(field)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return "unavailable (not recorded)"
+
+
 def _validate_public_matrix(result_rows: list[dict[str, str]], manifest: dict[str, Any]) -> None:
     """Reject artifacts that are not a complete, standard public run."""
 
+    _validate_public_protocol(manifest)
     try:
         audit_fraction = float(manifest["translation_audit_fraction"])
     except (KeyError, TypeError, ValueError) as exc:
@@ -192,12 +289,8 @@ def _validate_public_matrix(result_rows: list[dict[str, str]], manifest: dict[st
     expected_keys: set[tuple[str, str, str, int, str]] = set()
     for dataset_name in dataset_names:
         entry = manifest["datasets"][dataset_name]
-        if not isinstance(entry, dict):
-            raise ValueError("run manifest has an invalid dataset entry")
-        try:
-            expected_count = int(entry["expected_nonblank_rows"])
-        except (KeyError, TypeError, ValueError) as exc:
-            raise ValueError("run manifest has no expected item count for the public matrix") from exc
+        _dataset_identity(entry, dataset=dataset_name)
+        expected_count = entry["expected_nonblank_rows"]
         item_ids = selected_item_ids[dataset_name]
         if (
             not isinstance(item_ids, list)
@@ -332,30 +425,43 @@ def _load_validated_run(
     manifest = _read_manifest(Path(run_manifest))
     audit_rows = _read_csv(Path(audit_csv), _REQUIRED_AUDIT_FIELDS, "translation audit")
     _validate_public_matrix(result_rows, manifest)
+    _actual_extractor_identities(result_rows)
     audit_statuses = _audit_summary(audit_rows)
     _validate_audit_coverage(result_rows, audit_rows, manifest)
     return result_rows, manifest, audit_statuses
 
 
-def _validate_retry_comparison_scope(primary_manifest: dict[str, Any], comparison_manifest: dict[str, Any]) -> None:
+def _validate_retry_comparison_scope(
+    primary_manifest: dict[str, Any],
+    comparison_manifest: dict[str, Any],
+    primary_rows: list[dict[str, str]],
+    comparison_rows: list[dict[str, str]],
+) -> None:
     if primary_manifest.get("checker_retry") != "off":
         raise ValueError("primary retry-ablation run must have checker_retry='off'")
     if comparison_manifest.get("checker_retry") != "on":
         raise ValueError("comparison retry-ablation run must have checker_retry='on'")
+    if primary_manifest.get("dataset") != comparison_manifest.get("dataset"):
+        raise ValueError("retry-ablation runs must use matching requested dataset scope")
     if primary_manifest["selected_item_ids"] != comparison_manifest["selected_item_ids"]:
         raise ValueError("retry-ablation runs must use matching selected item IDs")
+
+    for field in (*_PUBLIC_PROTOCOL_NUMBERS, "prompt_version", "requested_model"):
+        if primary_manifest.get(field) != comparison_manifest.get(field):
+            raise ValueError(f"retry-ablation runs must use matching {field}")
 
     for dataset in _public_dataset_names(primary_manifest):
         primary_entry = primary_manifest["datasets"][dataset]
         comparison_entry = comparison_manifest["datasets"].get(dataset)
-        primary_revision = primary_entry.get("revision") if isinstance(primary_entry, dict) else None
-        comparison_revision = comparison_entry.get("revision") if isinstance(comparison_entry, dict) else None
-        if (
-            not isinstance(primary_revision, str)
-            or not primary_revision
-            or primary_revision != comparison_revision
-        ):
-            raise ValueError("retry-ablation runs must use matching dataset revisions")
+        primary_identity = _dataset_identity(primary_entry, dataset=dataset)
+        comparison_identity = _dataset_identity(comparison_entry, dataset=dataset)
+        if primary_identity != comparison_identity:
+            if primary_identity[1] != comparison_identity[1]:
+                raise ValueError("retry-ablation runs must use matching dataset revisions")
+            raise ValueError("retry-ablation runs must use matching pinned dataset descriptors")
+
+    if _actual_extractor_identities(primary_rows) != _actual_extractor_identities(comparison_rows):
+        raise ValueError("retry-ablation runs must use matching actual extractor provider/model sets")
 
 
 def _retry_summary_row(mode: str, rows: list[dict[str, str]]) -> tuple[str, str, str, str, str]:
@@ -392,7 +498,7 @@ def render_benchmark_report(
             Path(comparison_run_manifest),
             Path(comparison_audit_csv),
         )
-        _validate_retry_comparison_scope(manifest, comparison_manifest)
+        _validate_retry_comparison_scope(manifest, comparison_manifest, result_rows, comparison_rows)
 
     strict_successes = _strict_successes(result_rows)
     loose_successes = _loose_successes(result_rows)
@@ -401,7 +507,7 @@ def render_benchmark_report(
     by_dataset_track: dict[tuple[str, str], list[dict[str, str]]] = defaultdict(list)
     by_repetition: dict[int, list[dict[str, str]]] = defaultdict(list)
     by_industryor: dict[tuple[str, str], list[dict[str, str]]] = defaultdict(list)
-    failure_statuses: Counter[str] = Counter()
+    failure_categories: Counter[str] = Counter()
     for row in result_rows:
         dataset = row["dataset"].strip().lower() or "unlabelled"
         track = row["track"].strip().lower() or "unlabelled"
@@ -418,7 +524,7 @@ def render_benchmark_report(
             problem_type = _metadata_label(row, "problem_type", "type", "unlabelled")
             by_industryor[(difficulty, problem_type)].append(row)
         if not _as_bool(row["passed_1e_6"], field="passed_1e_6"):
-            failure_statuses[row["status"].strip() or "unlabelled"] += 1
+            failure_categories[row["failure_category"].strip()] += 1
 
     dual_track_rows = []
     for (dataset, track), rows in sorted(by_dataset_track.items()):
@@ -439,6 +545,10 @@ def render_benchmark_report(
         industryor_rows.append((difficulty, problem_type, str(len(rows)), str(successes), _rate(successes, len(rows))))
     if not industryor_rows:
         industryor_rows.append(("not present", "not present", "0", "0", "0.0%"))
+
+    actual_extractor_identities = _actual_extractor_identities(result_rows)
+    translation_usage_text, extractor_usage_text = _usage_summary_text(result_rows)
+    failure_statuses = failure_categories
 
     audit_status_labels = {"approved": "已批准", "rejected": "已拒绝", "waived": "已豁免"}
     audit_summary_text = "，".join(
@@ -463,6 +573,15 @@ def render_benchmark_report(
         f"This audited public run contains {total} attempts from `{manifest.get('run_id', 'unknown')}`. "
         f"Strict 1e-6 success is {strict_successes}/{total} ({_rate(strict_successes, total)}); every outcome stays in the denominator.",
         "",
+        "## 运行溯源",
+        "",
+        f"- Started: `{_recorded_time(manifest, 'started_at')}`",
+        f"- Completed: `{_recorded_time(manifest, 'completed_at')}`",
+        f"- Requested model: `{manifest['requested_model']}`",
+        "- Actual extractor provider/model set: "
+        + ", ".join(f"`{provider}/{model}`" for provider, model in sorted(actual_extractor_identities)),
+        f"- Token totals: {translation_usage_text}; {extractor_usage_text}",
+        "",
         "## 中文执行摘要",
         "",
         f"本次已审计公开运行包含 {total} 次尝试，严格 1e-6 通过数为 {strict_successes}/{total}"
@@ -486,7 +605,7 @@ def render_benchmark_report(
         "## 失败分布",
         "",
         *_table(
-            ("状态", "数量"),
+            ("失败类型", "数量"),
             [(status, str(count)) for status, count in sorted(failure_statuses.items())] or [("无", "0")],
         ),
         "",
