@@ -89,20 +89,25 @@ KEYWORDS: dict[ProblemType, list[str]] = {
 }
 
 
-KEYWORDS[ProblemType.GENERIC_LP_MILP] = [
+DIRECT_GENERIC_LP_MILP_KEYWORDS = [
     "linear programming",
     "linear program",
     "integer programming",
     "mixed integer",
     "milp",
+    "线性规划",
+    "整数规划",
+    "混合整数",
+    "混合整数规划",
+]
+
+KEYWORDS[ProblemType.GENERIC_LP_MILP] = [
+    *DIRECT_GENERIC_LP_MILP_KEYWORDS,
     "decision variable",
     "decision variables",
     "linear constraint",
     "linear constraints",
     "subject to",
-    "线性规划",
-    "整数规划",
-    "混合整数",
     "决策变量",
     "线性约束",
 ]
@@ -120,14 +125,17 @@ REJECTION_KEYWORDS = [
     "动态优化",
 ]
 
-GENERIC_OBJECTIVE_SIGNALS = [
+GENERIC_OBJECTIVE_VERB_SIGNALS = [
     "minimize",
     "maximize",
+    "最小化",
+    "最大化",
+]
+
+GENERIC_OBJECTIVE_NOUN_SIGNALS = [
     "objective",
     "profit",
     "cost",
-    "最小化",
-    "最大化",
     "目标",
     "利润",
     "成本",
@@ -246,6 +254,15 @@ def route_text(text: str) -> RouterResult:
             reason="clear nonlinear, stochastic, or dynamic optimization wording is unsupported",
         )
 
+    direct_generic_matches = _matched_keywords(normalized, DIRECT_GENERIC_LP_MILP_KEYWORDS)
+    if direct_generic_matches:
+        return RouterResult(
+            problem_type=ProblemType.GENERIC_LP_MILP,
+            confidence=_confidence(float(len(direct_generic_matches)), 0.0, len(direct_generic_matches)),
+            matched_keywords=direct_generic_matches,
+            reason="matched explicit generic LP/MILP wording",
+        )
+
     matches_by_type = {
         problem_type: _matched_keywords(normalized, keywords)
         for problem_type, keywords in KEYWORDS.items()
@@ -257,20 +274,25 @@ def route_text(text: str) -> RouterResult:
         ProblemType.VRP,
     )
     if not any(matches_by_type[problem_type] for problem_type in specialized_types):
-        objective_matches = _matched_keywords(normalized, GENERIC_OBJECTIVE_SIGNALS)
+        objective_verb_matches = _matched_keywords(normalized, GENERIC_OBJECTIVE_VERB_SIGNALS)
+        objective_noun_matches = _matched_keywords(normalized, GENERIC_OBJECTIVE_NOUN_SIGNALS)
         modeling_matches = _matched_keywords(normalized, GENERIC_MODELING_SIGNALS)
         constraint_matches = _matched_keywords(normalized, GENERIC_CONSTRAINT_SIGNALS)
         generic_matches = list(
             dict.fromkeys(
                 [
                     *matches_by_type[ProblemType.GENERIC_LP_MILP],
-                    *objective_matches,
+                    *objective_verb_matches,
+                    *objective_noun_matches,
                     *modeling_matches,
                     *constraint_matches,
                 ]
             )
         )
-        if objective_matches or len(modeling_matches) >= 2:
+        noun_with_modeling_structure = bool(
+            objective_noun_matches and modeling_matches and constraint_matches
+        )
+        if objective_verb_matches or len(modeling_matches) >= 2 or noun_with_modeling_structure:
             return RouterResult(
                 problem_type=ProblemType.GENERIC_LP_MILP,
                 confidence=_confidence(float(len(generic_matches)), 0.0, len(generic_matches)),
@@ -282,7 +304,7 @@ def route_text(text: str) -> RouterResult:
                 problem_type=ProblemType.UNSUPPORTED,
                 confidence=0.0,
                 matched_keywords=generic_matches,
-                reason="generic routing requires an optimization objective or multiple modeling signals",
+                reason="generic routing requires an objective verb or multiple modeling signals",
             )
     if not any(matches_by_type.values()):
         return RouterResult(

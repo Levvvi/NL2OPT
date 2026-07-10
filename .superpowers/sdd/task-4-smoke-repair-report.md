@@ -163,3 +163,46 @@ Result: 52 passed, 3 warnings in 1.06s.
 
 The warnings are the pre-existing SWIG deprecation warnings from the solver
 stack. No live benchmark or API request was run.
+
+## Final router follow-up: TDD repair
+
+The final review found that the multi-signal generic fallback was too strict
+for direct LP/MILP declarations and too permissive for bare objective nouns.
+
+### RED
+
+Command:
+
+~~~
+pytest -q tests/test_router.py tests/test_benchmark.py tests/test_bench_report.py --basetemp .tmp_pytest_basetemp_task4_final_router_red
+~~~
+
+Result: 2 failed, 52 passed, 3 warnings in 1.09s.
+
+- "This is a linear program." was unsupported because it had one modeling
+  signal and no objective verb.
+- "The cost of this book is five dollars." routed to generic_lp_milp because
+  cost alone was treated as an objective signal.
+
+### GREEN
+
+- Added a direct LP/MILP keyword route immediately after the nonlinear,
+  stochastic, and dynamic rejection check. It covers linear program, linear
+  programming, integer programming, mixed integer, MILP, and the direct
+  Chinese equivalents.
+- Split objective verbs from objective nouns. Only minimize/maximize and their
+  Chinese equivalents qualify as a one-signal fallback; noun-only wording now
+  needs modeling and constraint structure.
+- Existing specialized routing remains before the non-direct generic fallback,
+  and rejection precedence remains unchanged.
+
+Command:
+
+~~~
+pytest -q tests/test_router.py tests/test_benchmark.py tests/test_bench_report.py --basetemp .tmp_pytest_basetemp_task4_final_router_green
+~~~
+
+Result: 54 passed, 3 warnings in 1.01s.
+
+The warnings are the pre-existing SWIG deprecation warnings from the solver
+stack. No live benchmark or API request was run.

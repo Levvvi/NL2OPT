@@ -116,6 +116,15 @@ def test_route_bilingual_generic_linear_programs():
     assert chinese.problem_type is ProblemType.GENERIC_LP_MILP
 
 
+def test_route_explicit_linear_program_keyword_to_generic_lp_milp():
+    from nl2opt.agents.router import route_text
+    from nl2opt.schemas import ProblemType
+
+    result = route_text("This is a linear program.")
+
+    assert result.problem_type is ProblemType.GENERIC_LP_MILP
+
+
 def test_route_ordinary_english_and_chinese_optimization_wording_to_generic_lp_milp():
     from nl2opt.agents.router import route_text
     from nl2opt.schemas import ProblemType
@@ -134,6 +143,15 @@ def test_route_plain_constraint_phrase_without_an_optimization_signal_is_unsuppo
     from nl2opt.schemas import ProblemType
 
     result = route_text("Please write a poem with at most twelve lines.")
+
+    assert result.problem_type is ProblemType.UNSUPPORTED
+
+
+def test_route_bare_cost_noun_without_an_optimization_verb_is_unsupported():
+    from nl2opt.agents.router import route_text
+    from nl2opt.schemas import ProblemType
+
+    result = route_text("The cost of this book is five dollars.")
 
     assert result.problem_type is ProblemType.UNSUPPORTED
 
