@@ -408,7 +408,7 @@ def judge_benchmark_result(
 
 
 def _is_transport_failure(exc: Exception) -> bool:
-    if isinstance(exc, (ConnectionError, TimeoutError, OSError)):
+    if isinstance(exc, (ConnectionError, TimeoutError)):
         return True
     name = type(exc).__name__.lower()
     message = str(exc).lower()
@@ -677,6 +677,15 @@ def _resume_keys(results_csv: Path) -> set[tuple[str, str, str, int, str]]:
         }
 
 
+def _validate_results_header(results_csv: Path) -> None:
+    if not results_csv.exists() or results_csv.stat().st_size == 0:
+        return
+    with results_csv.open("r", newline="", encoding="utf-8") as handle:
+        header = next(csv.reader(handle), None)
+    if tuple(header or ()) != _RESULT_FIELDS:
+        raise ValueError("results CSV header is incompatible with the current telemetry schema")
+
+
 def _audit_item_keys(items: list[BenchmarkItem], fraction: float) -> set[tuple[str, str]]:
     by_dataset: dict[str, list[BenchmarkItem]] = {}
     for item in items:
@@ -889,6 +898,7 @@ def run_benchmark(config: BenchmarkRunConfig) -> Path:
         all_items.extend(items[: config.limit] if config.limit is not None else items)
     started_at = _utc_iso8601()
 
+    _validate_results_header(results_csv)
     existing_keys = _resume_keys(results_csv) if config.resume else set()
     audit_keys = _audit_item_keys(all_items, config.audit_fraction)
     results_needs_header = not results_csv.exists() or results_csv.stat().st_size == 0

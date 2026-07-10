@@ -111,3 +111,55 @@ without whitespace errors.
   not run per task scope.
 - Existing untracked smoke artifacts remain in the worktree and are not part of
   this repair commit.
+
+## Review follow-up: TDD repair
+
+Review identified three protocol gaps in the first repair:
+
+1. A lone constraint phrase could trigger the generic fallback.
+2. Resume could append rows beneath an older, incompatible telemetry header.
+3. PermissionError, a filesystem/codegen failure, inherited from OSError and
+   was incorrectly treated as a transport/API failure.
+
+The existing failure-artifact telemetry regression was also extended to verify
+router_reason, extractor provider/model, nonnegative wall duration, and a UTC
+evaluation timestamp.
+
+### RED
+
+Command:
+
+~~~
+pytest -q tests/test_router.py tests/test_benchmark.py tests/test_bench_report.py --basetemp .tmp_pytest_basetemp_task4_review_red
+~~~
+
+Result: 3 failed, 49 passed, 3 warnings in 1.18s.
+
+- "Please write a poem with at most twelve lines." routed as
+  generic_lp_milp instead of unsupported.
+- A two-column legacy CSV reached KeyError for the missing track column instead
+  of receiving an explicit schema error before append.
+- A mocked pipeline PermissionError was emitted as API_ERROR instead of ERROR
+  with CODEGEN_ERR classification.
+
+### GREEN
+
+- Split generic routing terms into objective, modeling, and constraint groups.
+  A no-specialist route now needs an objective signal, or at least two modeling
+  signals. A constraint-only phrase is explicitly unsupported.
+- Validate every nonempty results CSV header exactly against _RESULT_FIELDS
+  before any append or resume processing.
+- Removed broad OSError transport treatment, retaining connection and timeout
+  failures as transport failures so local filesystem/codegen errors remain
+  CODEGEN_ERR.
+
+Command:
+
+~~~
+pytest -q tests/test_router.py tests/test_benchmark.py tests/test_bench_report.py --basetemp .tmp_pytest_basetemp_task4_review_green
+~~~
+
+Result: 52 passed, 3 warnings in 1.06s.
+
+The warnings are the pre-existing SWIG deprecation warnings from the solver
+stack. No live benchmark or API request was run.

@@ -238,6 +238,12 @@ def test_runner_records_complete_failure_telemetry_and_utc_manifest_times(tmp_pa
     artifact = json.loads(Path(row["failure_artifact"]).read_text(encoding="utf-8"))
     assert artifact["failure_category"] == "EXTRACT_ERR"
     assert artifact["router_problem_type"] == "generic_lp_milp"
+    assert artifact["router_reason"]
+    assert artifact["extractor_provider"] == "fake-provider"
+    assert artifact["extractor_model"] == "fake-extractor"
+    assert float(artifact["wall_sec"]) >= 0
+    assert artifact["evaluated_at"].endswith("Z")
+    assert datetime.fromisoformat(artifact["evaluated_at"].removesuffix("Z") + "+00:00").tzinfo is not None
 
     manifest = json.loads((results.parent / "run_manifest.json").read_text(encoding="utf-8"))
     for key in ("started_at", "completed_at"):
@@ -286,6 +292,58 @@ def test_resume_does_not_duplicate_completed_attempt(tmp_path: Path) -> None:
     run_benchmark(_fake_config(tmp_path, resume=True))
 
     assert _count_csv_rows(tmp_path / "results.csv") == 1
+
+
+def test_runner_rejects_incompatible_results_header_before_append(tmp_path: Path) -> None:
+    config = _fake_config(tmp_path, resume=True)
+    assert config.results_csv is not None
+    config.results_csv.write_text("dataset,item_id\nnl4opt,item-0\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="results CSV header is incompatible with the current telemetry schema"):
+        run_benchmark(config)
+
+
+def test_pipeline_permission_error_is_classified_as_codegen_error(tmp_path: Path, monkeypatch) -> None:
+    datasets_dir = tmp_path / "datasets"
+    _write_dataset(datasets_dir, rows=_rows())
+
+    def successful_extraction(*_args: object, **_kwargs: object) -> ExtractorResult:
+        return ExtractorResult(
+            text="maximize x subject to x <= 1",
+            problem_type="generic_lp_milp",
+            success=True,
+            spec=object(),
+            spec_dict={},
+            raw_response="{}",
+            system_prompt="system",
+            user_prompt="user",
+            validation_errors=[],
+            error=None,
+            provider="fake-provider",
+            model="fake-extractor",
+            prompt_version="v4",
+        )
+
+    def denied_pipeline(*_args: object, **_kwargs: object) -> object:
+        raise PermissionError("cannot write solver output")
+
+    monkeypatch.setattr(benchmark_module, "extract_problem_spec", successful_extraction)
+    monkeypatch.setattr(benchmark_module, "run_problem_spec", denied_pipeline)
+
+    results = run_benchmark(
+        BenchmarkRunConfig(
+            datasets_dir=datasets_dir,
+            results_csv=tmp_path / "results.csv",
+            dataset="nl4opt",
+            track="en",
+            repetitions=1,
+            client=MockLLMClient({}),
+        )
+    )
+
+    row = next(csv.DictReader(results.open("r", newline="", encoding="utf-8")))
+    assert row["status"] == "ERROR"
+    assert row["failure_category"] == "CODEGEN_ERR"
 
 
 def test_runner_saves_full_artifacts_only_for_failures(tmp_path: Path) -> None:

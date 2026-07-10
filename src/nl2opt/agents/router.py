@@ -120,15 +120,38 @@ REJECTION_KEYWORDS = [
     "动态优化",
 ]
 
-GENERIC_OPTIMIZATION_SIGNALS = [
+GENERIC_OBJECTIVE_SIGNALS = [
     "minimize",
     "maximize",
+    "objective",
+    "profit",
+    "cost",
+    "最小化",
+    "最大化",
+    "目标",
+    "利润",
+    "成本",
+]
+
+GENERIC_MODELING_SIGNALS = [
+    "linear programming",
+    "integer programming",
+    "mixed integer",
+    "milp",
+    "decision variable",
+    "linear constraint",
+    "线性规划",
+    "整数规划",
+    "混合整数",
+    "决策变量",
+    "线性约束",
+]
+
+GENERIC_CONSTRAINT_SIGNALS = [
     "at most",
     "at least",
     "subject to",
     "constraint",
-    "最小化",
-    "最大化",
     "至多",
     "至少",
     "约束",
@@ -233,15 +256,34 @@ def route_text(text: str) -> RouterResult:
         ProblemType.JOBSHOP,
         ProblemType.VRP,
     )
-    generic_signals = _matched_keywords(normalized, GENERIC_OPTIMIZATION_SIGNALS)
-    if not any(matches_by_type[problem_type] for problem_type in specialized_types) and generic_signals:
-        generic_matches = list(dict.fromkeys([*matches_by_type[ProblemType.GENERIC_LP_MILP], *generic_signals]))
-        return RouterResult(
-            problem_type=ProblemType.GENERIC_LP_MILP,
-            confidence=_confidence(float(len(generic_matches)), 0.0, len(generic_matches)),
-            matched_keywords=generic_matches,
-            reason="matched generic optimization objective or constraint wording",
+    if not any(matches_by_type[problem_type] for problem_type in specialized_types):
+        objective_matches = _matched_keywords(normalized, GENERIC_OBJECTIVE_SIGNALS)
+        modeling_matches = _matched_keywords(normalized, GENERIC_MODELING_SIGNALS)
+        constraint_matches = _matched_keywords(normalized, GENERIC_CONSTRAINT_SIGNALS)
+        generic_matches = list(
+            dict.fromkeys(
+                [
+                    *matches_by_type[ProblemType.GENERIC_LP_MILP],
+                    *objective_matches,
+                    *modeling_matches,
+                    *constraint_matches,
+                ]
+            )
         )
+        if objective_matches or len(modeling_matches) >= 2:
+            return RouterResult(
+                problem_type=ProblemType.GENERIC_LP_MILP,
+                confidence=_confidence(float(len(generic_matches)), 0.0, len(generic_matches)),
+                matched_keywords=generic_matches,
+                reason="matched generic optimization objective or modeling wording",
+            )
+        if generic_matches:
+            return RouterResult(
+                problem_type=ProblemType.UNSUPPORTED,
+                confidence=0.0,
+                matched_keywords=generic_matches,
+                reason="generic routing requires an optimization objective or multiple modeling signals",
+            )
     if not any(matches_by_type.values()):
         return RouterResult(
             problem_type=ProblemType.UNSUPPORTED,

@@ -129,6 +129,15 @@ def test_route_ordinary_english_and_chinese_optimization_wording_to_generic_lp_m
     assert chinese.problem_type is ProblemType.GENERIC_LP_MILP
 
 
+def test_route_plain_constraint_phrase_without_an_optimization_signal_is_unsupported():
+    from nl2opt.agents.router import route_text
+    from nl2opt.schemas import ProblemType
+
+    result = route_text("Please write a poem with at most twelve lines.")
+
+    assert result.problem_type is ProblemType.UNSUPPORTED
+
+
 def test_route_rejects_clear_nonlinear_stochastic_and_dynamic_requests():
     from nl2opt.agents.router import route_text
     from nl2opt.schemas import ProblemType
