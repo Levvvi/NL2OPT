@@ -1,5 +1,20 @@
 # NL2OPT: 中文自然语言到优化模型的 Agent
 
+## Public benchmark runner
+
+The repository includes revision-pinned NL4Opt and IndustryOR inputs under
+`eval/datasets/`. A benchmark run records each attempt in a resumable CSV; it
+does not publish aggregate results automatically. Configure `DEEPSEEK_API_KEY`
+outside the repository, then run a bounded smoke command such as:
+
+```bash
+python -m nl2opt.eval.run_bench --dataset all --track all --repetitions 1 --checker-retry off --limit 5 --timeout-sec 60 --run-id smoke-local
+```
+
+Rows, the run manifest, the deterministic Chinese translation audit sample,
+and failure-only artifacts are written beneath `eval/results/<run-id>/`.
+Resume an interrupted command by repeating it with `--resume`.
+
 NL2OPT 是一个面试级 MVP，用来验证“中文业务问题 -> 结构化优化模型 -> OR-Tools 求解 -> 独立校验 -> 评测报告”的闭环。用户可以输入中文生产计划、任务分配、作业车间排产或车辆路径配送问题，系统先用 Router 判断问题类型，再用 DeepSeek 抽取结构化 `ProblemSpec`。求解阶段不让 LLM 自由写 OR-Tools 代码，而是使用受控 Jinja2 模板生成模型代码并本地运行。求解结果会经过独立 checker 复核约束和目标值，并输出 pipeline/eval 报告和确定性中文解释。
 
 ## 核心亮点

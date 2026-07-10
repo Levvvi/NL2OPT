@@ -1,0 +1,4 @@
+# These two files are byte-pinned to the upstream revision in manifest.json.
+# Disable platform line-ending conversion so their SHA-256 values remain valid.
+NL4Opt_fixed.jsonl -text
+IndustryOR_fixedV2.jsonl -text

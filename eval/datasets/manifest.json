@@ -1,0 +1,23 @@
+{
+  "manifest_version": 1,
+  "datasets": {
+    "nl4opt": {
+      "upstream_filename": "NL4OPT.jsonl",
+      "local_filename": "NL4Opt_fixed.jsonl",
+      "revision": "54ca621042b4619b90ce23ba3edd710611822e02",
+      "url": "https://huggingface.co/datasets/chenyitian-shanshu/ORLMBenchmark/resolve/54ca621042b4619b90ce23ba3edd710611822e02/NL4OPT.jsonl",
+      "sha256": "409b34856faba736bd6d4b3ab1569d74e7c513233389c691a9219bd2b9cc1689",
+      "license": "Apache-2.0",
+      "expected_nonblank_rows": 245
+    },
+    "industryor": {
+      "upstream_filename": "IndustryOR_fixedV2.json",
+      "local_filename": "IndustryOR_fixedV2.jsonl",
+      "revision": "54ca621042b4619b90ce23ba3edd710611822e02",
+      "url": "https://huggingface.co/datasets/chenyitian-shanshu/ORLMBenchmark/resolve/54ca621042b4619b90ce23ba3edd710611822e02/IndustryOR_fixedV2.json",
+      "sha256": "756549264386d9c28f3bf15b442e4d45e345f809155f7c7951c9b7edfd25ee8b",
+      "license": "Apache-2.0",
+      "expected_nonblank_rows": 100
+    }
+  }
+}
