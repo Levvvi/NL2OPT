@@ -98,6 +98,28 @@ V3_TYPE_HINTS: dict[ProblemType, list[str]] = {
 }
 
 
+V4_COMMON_RULES = [
+    rule
+    for rule in V3_COMMON_RULES
+    if rule != "The problem_type value must exactly equal the requested problem_type."
+]
+V4_COMMON_RULES.append(
+    "For legacy schemas, problem_type must exactly equal the requested problem_type. "
+    "For generic_lp_milp, use unsupported only when the request cannot be represented as a linear LP or MILP."
+)
+
+
+V4_TYPE_HINTS: dict[ProblemType, list[str]] = dict(V3_TYPE_HINTS)
+V4_TYPE_HINTS[ProblemType.GENERIC_LP_MILP] = [
+    "Use GenericLpSpec fields: problem_id, problem_type, variables, objective, constraints, assumptions, missing_fields.",
+    "variables must be objects like {'name': 'x', 'lb': 0, 'ub': 10, 'is_integer': false}; use null for no upper bound.",
+    "objective must contain sense, name, and non-empty linear terms like {'var': 'x', 'coef': 3}.",
+    "constraints must contain non-empty terms, one of <=, >=, ==, and a numeric rhs.",
+    "Every term var must name a variable listed in variables; do not output equations as strings.",
+    "If the request is non-representable because it is nonlinear, stochastic, dynamic, or otherwise outside LP/MILP, return UnsupportedProblemSpec only: {'problem_id': '...', 'problem_type': 'unsupported', 'reason': '...'}.",
+]
+
+
 def _numbered(lines: list[str], start: int = 1) -> str:
     return "\n".join(f"{index}. {line}" for index, line in enumerate(lines, start=start))
 
@@ -176,6 +198,41 @@ def _v3_prompts(text: str, problem_type: ProblemType, schema_json: dict[str, Any
     return system_prompt, user_prompt
 
 
+def _v4_prompts(text: str, problem_type: ProblemType, schema_json: dict[str, Any]) -> tuple[str, str]:
+    system_prompt = (
+        "You are an information extraction component for Chinese and English optimization modeling. "
+        "Your only job is to convert the user's problem statement into a ProblemSpec JSON object "
+        "that validates against the provided JSON schema. "
+        "Return exactly one JSON object. Do not output markdown, explanations, code fences, solver code, or a solution. "
+        "The word json is intentionally included because the API is using JSON output mode."
+    )
+    schema_text = json.dumps(schema_json, ensure_ascii=False, indent=2)
+    type_hints = V4_TYPE_HINTS.get(problem_type, [])
+    if problem_type is ProblemType.GENERIC_LP_MILP:
+        problem_type_contract = (
+            "Use generic_lp_milp for representable linear models. Use unsupported only for an "
+            "UnsupportedProblemSpec explicit refusal when the model is non-representable."
+        )
+    else:
+        problem_type_contract = f"Use {problem_type.value} exactly as the problem_type value."
+    user_prompt = (
+        f"Original problem text:\n{text}\n\n"
+        f"Requested problem_type: {problem_type.value}\n\n"
+        f"Target JSON schema:\n{schema_text}\n\n"
+        "Common extraction rules:\n"
+        f"{_numbered(V4_COMMON_RULES)}\n\n"
+        f"{problem_type.value} schema-specific output requirements:\n"
+        f"{_numbered(type_hints)}\n\n"
+        "Output contract:\n"
+        "1. Return exactly one JSON object.\n"
+        f"2. {problem_type_contract}\n"
+        "3. Keep missing_fields and assumptions as JSON arrays of strings when using a ProblemSpec.\n"
+        "4. Keep object/list/matrix shapes exactly aligned with the schema.\n"
+        "5. Do not include any explanation outside the JSON object.\n"
+    )
+    return system_prompt, user_prompt
+
+
 def build_extractor_prompt(
     text: str,
     problem_type: ProblemType,
@@ -188,4 +245,6 @@ def build_extractor_prompt(
         return _v2_prompts(text, problem_type, schema_json)
     if prompt_version == "v3":
         return _v3_prompts(text, problem_type, schema_json)
+    if prompt_version == "v4":
+        return _v4_prompts(text, problem_type, schema_json)
     raise ValueError(f"unsupported prompt_version: {prompt_version}")

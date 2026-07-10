@@ -89,6 +89,38 @@ KEYWORDS: dict[ProblemType, list[str]] = {
 }
 
 
+KEYWORDS[ProblemType.GENERIC_LP_MILP] = [
+    "linear programming",
+    "linear program",
+    "integer programming",
+    "mixed integer",
+    "milp",
+    "decision variable",
+    "decision variables",
+    "linear constraint",
+    "linear constraints",
+    "subject to",
+    "线性规划",
+    "整数规划",
+    "混合整数",
+    "决策变量",
+    "线性约束",
+]
+
+REJECTION_KEYWORDS = [
+    "nonlinear",
+    "quadratic",
+    "stochastic",
+    "random demand",
+    "dynamic optimization",
+    "非线性",
+    "二次",
+    "随机",
+    "不确定",
+    "动态优化",
+]
+
+
 def _matched_keywords(text: str, keywords: list[str]) -> list[str]:
     lowered = text.lower()
     return [keyword for keyword in keywords if keyword.lower() in lowered]
@@ -126,6 +158,22 @@ def _score(text: str, problem_type: ProblemType, matches: list[str]) -> float:
         if sum(1 for term in priority_terms if term in text) >= 2:
             score += 1.0
 
+    elif problem_type is ProblemType.GENERIC_LP_MILP:
+        priority_terms = [
+            "linear",
+            "integer",
+            "milp",
+            "decision variable",
+            "subject to",
+            "线性规划",
+            "整数规划",
+            "混合整数",
+            "决策变量",
+            "线性约束",
+        ]
+        if sum(1 for term in priority_terms if term in text.lower()) >= 2:
+            score += 1.0
+
     return score
 
 
@@ -149,6 +197,15 @@ def route_text(text: str) -> RouterResult:
             reason="输入为空，无法判断问题类型",
         )
 
+    rejected_keywords = _matched_keywords(normalized, REJECTION_KEYWORDS)
+    if rejected_keywords:
+        return RouterResult(
+            problem_type=ProblemType.UNSUPPORTED,
+            confidence=0.95,
+            matched_keywords=rejected_keywords,
+            reason="clear nonlinear, stochastic, or dynamic optimization wording is unsupported",
+        )
+
     matches_by_type = {
         problem_type: _matched_keywords(normalized, keywords)
         for problem_type, keywords in KEYWORDS.items()
@@ -170,6 +227,7 @@ def route_text(text: str) -> RouterResult:
         ProblemType.JOBSHOP,
         ProblemType.ASSIGNMENT,
         ProblemType.PRODUCTION,
+        ProblemType.GENERIC_LP_MILP,
     ]
     ordered = sorted(
         scores,

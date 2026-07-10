@@ -10,12 +10,14 @@ from pydantic import ValidationError
 
 from nl2opt.checkers.base import CheckerReport
 from nl2opt.checkers.assignment_checker import check_assignment_solution
+from nl2opt.checkers.generic_lp_checker import check_generic_solution
 from nl2opt.checkers.jobshop_checker import check_jobshop_solution
 from nl2opt.checkers.production_checker import check_production_solution
 from nl2opt.checkers.vrp_checker import check_vrp_solution
 from nl2opt.runtime.runner import load_solver_result, run_python_code
 from nl2opt.schemas import (
     AssignmentProblemSpec,
+    GenericLpSpec,
     JobshopProblemSpec,
     ProblemType,
     ProductionProblemSpec,
@@ -24,6 +26,7 @@ from nl2opt.schemas import (
 )
 from nl2opt.solvers.render import (
     render_assignment_code,
+    render_generic_lp_code,
     render_jobshop_code,
     render_production_code,
     render_vrp_code,
@@ -101,6 +104,7 @@ def load_problem_spec(path: Path) -> Any:
         ProblemType.ASSIGNMENT.value: AssignmentProblemSpec,
         ProblemType.JOBSHOP.value: JobshopProblemSpec,
         ProblemType.VRP.value: VrpProblemSpec,
+        ProblemType.GENERIC_LP_MILP.value: GenericLpSpec,
     }
     schema_class = schema_by_type.get(str(problem_type))
     if schema_class is None:
@@ -119,6 +123,8 @@ def render_code_for_spec(spec: Any) -> str:
         return render_jobshop_code(spec)
     if problem_type == ProblemType.VRP.value:
         return render_vrp_code(spec)
+    if problem_type == ProblemType.GENERIC_LP_MILP.value:
+        return render_generic_lp_code(spec)
     raise ValueError(f"unsupported problem_type: {problem_type}")
 
 
@@ -132,6 +138,8 @@ def check_result_for_spec(spec: Any, result: SolverResult) -> CheckerReport:
         return check_jobshop_solution(spec, result)
     if problem_type == ProblemType.VRP.value:
         return check_vrp_solution(spec, result)
+    if problem_type == ProblemType.GENERIC_LP_MILP.value:
+        return check_generic_solution(spec, result)
     raise ValueError(f"unsupported problem_type: {problem_type}")
 
 

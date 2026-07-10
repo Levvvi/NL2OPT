@@ -99,3 +99,30 @@ def test_router_cli_runs():
     payload = json.loads(completed.stdout)
     assert payload["problem_type"] == "production"
     assert payload["confidence"] > 0
+
+
+def test_route_bilingual_generic_linear_programs():
+    from nl2opt.agents.router import route_text
+    from nl2opt.schemas import ProblemType
+
+    english = route_text(
+        "Maximize 3x + 2y subject to linear constraints; x and y are decision variables."
+    )
+    chinese = route_text(
+        "\u8fd9\u662f\u4e00\u4e2a\u7ebf\u6027\u89c4\u5212\u95ee\u9898\uff0c\u51b3\u7b56\u53d8\u91cf x \u548c y \u9700\u6ee1\u8db3\u7ebf\u6027\u7ea6\u675f\u3002"
+    )
+
+    assert english.problem_type is ProblemType.GENERIC_LP_MILP
+    assert chinese.problem_type is ProblemType.GENERIC_LP_MILP
+
+
+def test_route_rejects_clear_nonlinear_stochastic_and_dynamic_requests():
+    from nl2opt.agents.router import route_text
+    from nl2opt.schemas import ProblemType
+
+    for text in (
+        "Maximize x squared subject to nonlinear constraints.",
+        "Optimize a stochastic linear program with random demand.",
+        "\u8fd9\u662f\u4e00\u4e2a\u52a8\u6001\u4f18\u5316\u95ee\u9898\uff0c\u9700\u8981\u8003\u8651\u968f\u673a\u9700\u6c42\u3002",
+    ):
+        assert route_text(text).problem_type is ProblemType.UNSUPPORTED

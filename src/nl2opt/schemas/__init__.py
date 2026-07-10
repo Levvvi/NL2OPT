@@ -4,6 +4,14 @@ from nl2opt.schemas.assignment import (
     AssignmentTask,
 )
 from nl2opt.schemas.base import ObjectiveSense, ObjectiveSpec, ProblemType
+from nl2opt.schemas.generic_lp import (
+    GenericLpSpec,
+    GenericObjectiveSpec,
+    GenericVariableSpec,
+    LinearConstraint,
+    LinearTerm,
+    UnsupportedProblemSpec,
+)
 from nl2opt.schemas.jobshop import (
     JobshopJob,
     JobshopMachine,
@@ -22,6 +30,11 @@ __all__ = [
     "JobshopMachine",
     "JobshopOperation",
     "JobshopProblemSpec",
+    "GenericLpSpec",
+    "GenericObjectiveSpec",
+    "GenericVariableSpec",
+    "LinearConstraint",
+    "LinearTerm",
     "ObjectiveSense",
     "ObjectiveSpec",
     "ProblemType",
@@ -30,6 +43,7 @@ __all__ = [
     "ResourceSpec",
     "SolverResult",
     "SolverStatus",
+    "UnsupportedProblemSpec",
     "VrpCustomer",
     "VrpProblemSpec",
     "VrpVehicle",

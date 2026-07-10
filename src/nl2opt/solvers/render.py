@@ -7,6 +7,7 @@ from jinja2 import Environment, StrictUndefined
 
 from nl2opt.schemas import (
     AssignmentProblemSpec,
+    GenericLpSpec,
     JobshopProblemSpec,
     ProductionProblemSpec,
     VrpProblemSpec,
@@ -46,3 +47,7 @@ def render_jobshop_code(spec: JobshopProblemSpec) -> str:
 
 def render_vrp_code(spec: VrpProblemSpec) -> str:
     return _render_template("vrp.py.j2", spec.model_dump(mode="json"))
+
+
+def render_generic_lp_code(spec: GenericLpSpec) -> str:
+    return _render_template("generic_lp.py.j2", spec.model_dump(mode="json"))
