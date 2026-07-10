@@ -21,6 +21,7 @@ _RESULT_FIELDS = (
     "passed_1e_4",
     "checker_retried",
     "failure_category",
+    "router_problem_type",
     "extractor_provider",
     "extractor_model",
     "translation_usage",
@@ -138,7 +139,7 @@ def _result_rows(
                 status = "OPTIMAL"
                 reason = "objective_match"
                 checker_retried = False
-                failure_category = "PASS"
+                failure_category = ""
                 if (dataset, track, repetition) == ("industryor", "zh", 1):
                     strict_passed = False
                     loose_passed = False
@@ -161,6 +162,7 @@ def _result_rows(
                     "passed_1e_4": loose_passed,
                     "checker_retried": checker_retried,
                     "failure_category": failure_category,
+                    "router_problem_type": "generic_lp_milp",
                     "extractor_provider": "deepseek",
                     "extractor_model": "deepseek-v4-flash",
                     "translation_usage": json.dumps(
@@ -572,6 +574,75 @@ def test_report_requires_failure_category_column(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="failure_category"):
         render_benchmark_report(results, manifest, audit, tmp_path / "report.md")
+
+
+def test_report_requires_failure_category_for_each_strict_failure(tmp_path: Path) -> None:
+    rows = _result_rows()
+    failed_row = next(row for row in rows if not row["passed_1e_6"])
+    failed_row["failure_category"] = ""
+    results, manifest, audit = _write_inputs(tmp_path, rows=rows, audit_status="approved")
+
+    with pytest.raises(ValueError, match="failure_category"):
+        render_benchmark_report(results, manifest, audit, tmp_path / "report.md")
+
+
+@pytest.mark.parametrize(
+    ("provider", "model"),
+    (("", ""), ("", "deepseek-v4-flash"), ("deepseek", "")),
+)
+def test_report_rejects_blank_or_partial_actual_metadata_after_extraction(
+    tmp_path: Path, provider: str, model: str
+) -> None:
+    rows = _result_rows()
+    rows[0]["extractor_provider"] = provider
+    rows[0]["extractor_model"] = model
+    results, manifest, audit = _write_inputs(tmp_path, rows=rows, audit_status="approved")
+
+    with pytest.raises(ValueError, match="actual extractor"):
+        render_benchmark_report(results, manifest, audit, tmp_path / "report.md")
+
+
+def test_report_allows_explicit_router_unsupported_without_extractor_metadata(tmp_path: Path) -> None:
+    rows = _result_rows()
+    unsupported_row = rows[0]
+    unsupported_row.update(
+        {
+            "status": "UNSUPPORTED",
+            "passed_1e_6": False,
+            "passed_1e_4": False,
+            "failure_category": "UNSUPPORTED",
+            "router_problem_type": "unsupported",
+            "extractor_provider": "",
+            "extractor_model": "",
+            "extractor_usage": "",
+        }
+    )
+    results, manifest, audit = _write_inputs(tmp_path, rows=rows, audit_status="approved")
+
+    render_benchmark_report(results, manifest, audit, tmp_path / "report.md")
+
+
+def test_report_rejects_comparison_blank_actual_metadata_after_extraction(tmp_path: Path) -> None:
+    primary_results, primary_manifest, primary_audit = _write_inputs(
+        tmp_path / "off", rows=_result_rows(checker_retry="off"), audit_status="approved", checker_retry="off"
+    )
+    comparison_rows = _result_rows(checker_retry="on")
+    comparison_rows[0]["extractor_provider"] = ""
+    comparison_rows[0]["extractor_model"] = ""
+    comparison_results, comparison_manifest, comparison_audit = _write_inputs(
+        tmp_path / "on", rows=comparison_rows, audit_status="approved", checker_retry="on"
+    )
+
+    with pytest.raises(ValueError, match="actual extractor"):
+        render_benchmark_report(
+            primary_results,
+            primary_manifest,
+            primary_audit,
+            tmp_path / "report.md",
+            comparison_results_csv=comparison_results,
+            comparison_run_manifest=comparison_manifest,
+            comparison_audit_csv=comparison_audit,
+        )
 
 
 def test_report_marks_checker_retry_ablation_pending_without_comparison_artifacts(tmp_path: Path) -> None:

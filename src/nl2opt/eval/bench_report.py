@@ -29,6 +29,7 @@ _REQUIRED_RESULT_FIELDS = {
     "passed_1e_4",
     "checker_retried",
     "failure_category",
+    "router_problem_type",
     "extractor_provider",
     "extractor_model",
     "translation_usage",
@@ -218,12 +219,22 @@ def _actual_extractor_identities(result_rows: list[dict[str, str]]) -> set[tuple
     for row in result_rows:
         provider = row["extractor_provider"].strip()
         model = row["extractor_model"].strip()
+        router_problem_type = row["router_problem_type"].strip().lower()
+        status = row["status"].strip().upper()
+        strict_passed = _as_bool(row["passed_1e_6"], field="passed_1e_6")
+        failure_category = row["failure_category"].strip()
+        if not strict_passed and not failure_category:
+            raise ValueError("public reports require failure_category for every strict failure")
         if bool(provider) != bool(model):
             raise ValueError("actual extractor metadata must contain provider/model pairs")
         if provider:
             identities.add((provider, model))
-        if not row["failure_category"].strip():
-            raise ValueError("public reports require failure_category for every result row")
+            continue
+        if router_problem_type == "unsupported" and status == "UNSUPPORTED":
+            continue
+        if router_problem_type:
+            raise ValueError("actual extractor metadata is blank after extraction")
+        raise ValueError("actual extractor metadata is blank without an explicit unsupported router result")
     if not identities:
         raise ValueError("public reports require non-empty actual extractor metadata")
     return identities
