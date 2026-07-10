@@ -34,6 +34,7 @@ MANIFEST_FILENAME = "manifest.json"
 TRANSPORT_BACKOFF_SECONDS = (2, 4, 8, 16, 32)
 DEFAULT_TOLERANCE = 1e-6
 LOOSE_TOLERANCE = 1e-4
+_INFEASIBLE_GROUND_TRUTH_LABELS = frozenset({"INFEASIBLE", "NO BEST SOLUTION", "-99999"})
 
 # Kept in source (rather than improvised per request) so every Chinese attempt
 # receives the same domain vocabulary instruction.
@@ -195,6 +196,9 @@ class BenchmarkRunConfig:
     checker_retry_runner: CheckerRetryRunner | None = None
     sleep: Callable[[float], None] = time.sleep
     audit_fraction: float = 0.10
+    prompt_version: str = "v4"
+    temperature: float = 0.0
+    requested_model: str = DeepSeekClient.DEFAULT_MODEL
 
     def __post_init__(self) -> None:
         self.datasets_dir = Path(self.datasets_dir)
@@ -211,6 +215,12 @@ class BenchmarkRunConfig:
             raise ValueError("tolerance must be positive")
         if not 0 < self.audit_fraction <= 1:
             raise ValueError("audit_fraction must be in (0, 1]")
+        if self.prompt_version != "v4":
+            raise ValueError("prompt_version is fixed at v4 for benchmark runs")
+        if self.temperature != 0.0:
+            raise ValueError("temperature is fixed at 0.0 for benchmark runs")
+        if not self.requested_model:
+            raise ValueError("requested_model must not be empty")
 
 
 class _JsonClient(Protocol):
@@ -309,6 +319,8 @@ def load_benchmark_dataset(name: str, datasets_dir: Path) -> list[BenchmarkItem]
         ground_truth = _item_value(raw, ("en_answer", "answer", "objective_value", "objective", "solution"))
         if not isinstance(question, str) or not question.strip():
             raise ValueError(f"JSONL row {position} in {path} has no text question")
+        if not _ground_truth_is_infeasible(ground_truth) and _numeric_ground_truth(ground_truth) is None:
+            raise ValueError(f"JSONL row {position} in {path} has an invalid ground-truth answer")
         item_id = _item_value(raw, ("id", "item_id", "case_id"))
         items.append(
             BenchmarkItem(
@@ -349,7 +361,9 @@ def _objective_from_prediction(prediction: Any) -> float | None:
 def _ground_truth_is_infeasible(ground_truth: Any) -> bool:
     if isinstance(ground_truth, Mapping):
         ground_truth = ground_truth.get("status", ground_truth.get("answer"))
-    return isinstance(ground_truth, str) and ground_truth.strip().upper() == "INFEASIBLE"
+    if isinstance(ground_truth, str):
+        return ground_truth.strip().upper() in _INFEASIBLE_GROUND_TRUTH_LABELS
+    return isinstance(ground_truth, (int, float)) and not isinstance(ground_truth, bool) and ground_truth == -99999
 
 
 def _numeric_ground_truth(ground_truth: Any) -> float | None:
@@ -684,6 +698,19 @@ def _resume_keys(results_csv: Path) -> set[tuple[str, str, str, int, str]]:
         }
 
 
+def _audit_resume_keys(audit_csv: Path) -> set[tuple[str, str, int]]:
+    if not audit_csv.exists() or audit_csv.stat().st_size == 0:
+        return set()
+    with audit_csv.open("r", newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        if tuple(reader.fieldnames or ()) != _AUDIT_FIELDS:
+            raise ValueError("translation audit CSV header is incompatible with the current telemetry schema")
+        return {
+            (row["dataset"], row["item_id"], int(row["repetition"]))
+            for row in reader
+        }
+
+
 def _validate_results_header(results_csv: Path) -> None:
     if not results_csv.exists() or results_csv.stat().st_size == 0:
         return
@@ -854,43 +881,102 @@ def _write_failure_artifact(
     return path
 
 
-def _write_run_manifest(
-    path: Path,
+def _run_manifest_payload(
     config: BenchmarkRunConfig,
     dataset_names: tuple[str, ...],
+    tracks: tuple[str, ...],
     items: list[BenchmarkItem],
     started_at: str,
-    completed_at: str,
-) -> None:
+    completed_at: str | None,
+) -> dict[str, Any]:
     entries = {}
     for name in dataset_names:
         _, entry = _dataset_entry(name, config.datasets_dir)
         entries[name] = entry
-    path.write_text(
-        json.dumps(
-            {
-                "run_id": config.run_id,
-                "dataset": config.dataset,
-                "track": config.track,
-                "repetitions": config.repetitions,
-                "checker_retry": "on" if config.checker_retry else "off",
-                "limit": config.limit,
-                "timeout_sec": config.timeout_sec,
-                "tolerance": config.tolerance,
-                "translation_audit_fraction": config.audit_fraction,
-                "started_at": started_at,
-                "completed_at": completed_at,
-                "datasets": entries,
-                "selected_item_ids": {
-                    dataset_name: [item.item_id for item in items if item.dataset == dataset_name]
-                    for dataset_name in dataset_names
-                },
-            },
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
+    return {
+        "run_id": config.run_id,
+        "dataset": config.dataset,
+        "track": config.track,
+        "tracks": list(tracks),
+        "repetitions": config.repetitions,
+        "checker_retry": "on" if config.checker_retry else "off",
+        "limit": config.limit,
+        "timeout_sec": config.timeout_sec,
+        "tolerance": config.tolerance,
+        "translation_audit_fraction": config.audit_fraction,
+        "prompt_version": config.prompt_version,
+        "temperature": config.temperature,
+        "requested_model": config.requested_model,
+        "started_at": started_at,
+        "completed_at": completed_at,
+        "datasets": entries,
+        "selected_item_ids": {
+            dataset_name: [item.item_id for item in items if item.dataset == dataset_name]
+            for dataset_name in dataset_names
+        },
+    }
+
+
+def _write_run_manifest(path: Path, payload: dict[str, Any]) -> None:
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _read_run_manifest(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise ValueError(f"resume requires an existing run manifest: {path}") from exc
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"run manifest is invalid JSON: {path}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("run manifest must be a JSON object")
+    return payload
+
+
+def _resume_manifest_mismatches(existing: dict[str, Any], expected: dict[str, Any]) -> list[str]:
+    fields = (
+        "dataset",
+        "track",
+        "tracks",
+        "repetitions",
+        "checker_retry",
+        "limit",
+        "timeout_sec",
+        "tolerance",
+        "translation_audit_fraction",
+        "prompt_version",
+        "temperature",
+        "requested_model",
+        "selected_item_ids",
     )
+    mismatches = [field_name for field_name in fields if existing.get(field_name) != expected[field_name]]
+    existing_datasets = existing.get("datasets")
+    if not isinstance(existing_datasets, dict):
+        return [*mismatches, "datasets"]
+    if set(existing_datasets) != set(expected["datasets"]):
+        mismatches.append("datasets")
+    else:
+        for dataset_name, expected_entry in expected["datasets"].items():
+            existing_entry = existing_datasets.get(dataset_name)
+            if not isinstance(existing_entry, dict) or any(
+                existing_entry.get(key) != expected_entry[key] for key in ("sha256", "revision")
+            ):
+                mismatches.append(f"datasets.{dataset_name}")
+    return mismatches
+
+
+def _validate_resume_manifest(path: Path, expected: dict[str, Any]) -> dict[str, Any]:
+    existing = _read_run_manifest(path)
+    mismatches = _resume_manifest_mismatches(existing, expected)
+    if mismatches:
+        raise ValueError(f"resume manifest mismatch: {', '.join(mismatches)}")
+    return existing
+
+
+def _patch_manifest_completion(path: Path, completed_at: str) -> None:
+    payload = _read_run_manifest(path)
+    payload["completed_at"] = completed_at
+    _write_run_manifest(path, payload)
 
 
 def run_benchmark(config: BenchmarkRunConfig) -> Path:
@@ -904,11 +990,31 @@ def run_benchmark(config: BenchmarkRunConfig) -> Path:
     for dataset_name in dataset_names:
         items = load_benchmark_dataset(dataset_name, config.datasets_dir)
         all_items.extend(items[: config.limit] if config.limit is not None else items)
-    started_at = _utc_iso8601()
 
     _validate_results_header(results_csv)
+    expected_manifest = _run_manifest_payload(
+        config,
+        dataset_names,
+        tracks,
+        all_items,
+        started_at="",
+        completed_at=None,
+    )
+    if config.resume:
+        existing_manifest = _validate_resume_manifest(run_manifest, expected_manifest)
+        started_at = str(existing_manifest.get("started_at", ""))
+        if not started_at:
+            raise ValueError("resume manifest has no started_at timestamp")
+    else:
+        started_at = _utc_iso8601()
+        _write_run_manifest(
+            run_manifest,
+            _run_manifest_payload(config, dataset_names, tracks, all_items, started_at, completed_at=None),
+        )
+
     existing_keys = _resume_keys(results_csv) if config.resume else set()
     audit_keys = _audit_item_keys(all_items, config.audit_fraction)
+    existing_audit_keys = _audit_resume_keys(audit_csv) if config.resume else set()
     results_needs_header = not results_csv.exists() or results_csv.stat().st_size == 0
     audit_needs_header = not audit_csv.exists() or audit_csv.stat().st_size == 0
     checker_retry_value = "on" if config.checker_retry else "off"
@@ -944,7 +1050,7 @@ def run_benchmark(config: BenchmarkRunConfig) -> Path:
                     if track == "zh":
                         if client is None:
                             try:
-                                client = DeepSeekClient(timeout_sec=config.timeout_sec)
+                                client = DeepSeekClient(timeout_sec=config.timeout_sec, model=config.requested_model)
                             except Exception as exc:
                                 error = str(exc)
                                 translation = TranslationResult(
@@ -961,7 +1067,12 @@ def run_benchmark(config: BenchmarkRunConfig) -> Path:
                         else:
                             extraction_text = str(translation.translated_text)
 
-                        if (item.dataset, item.item_id) in audit_keys and translation is not None:
+                        audit_key = (item.dataset, item.item_id, repetition)
+                        if (
+                            (item.dataset, item.item_id) in audit_keys
+                            and audit_key not in existing_audit_keys
+                            and translation is not None
+                        ):
                             audit_writer.writerow(
                                 {
                                     "dataset": item.dataset,
@@ -978,6 +1089,7 @@ def run_benchmark(config: BenchmarkRunConfig) -> Path:
                                     "human_audit_notes": "",
                                 }
                             )
+                            existing_audit_keys.add(audit_key)
 
                     if error is None:
                         if config.attempt_runner is not None:
@@ -985,7 +1097,7 @@ def run_benchmark(config: BenchmarkRunConfig) -> Path:
                         else:
                             if client is None:
                                 try:
-                                    client = DeepSeekClient(timeout_sec=config.timeout_sec)
+                                    client = DeepSeekClient(timeout_sec=config.timeout_sec, model=config.requested_model)
                                 except Exception as exc:
                                     attempt = BenchmarkAttempt(status="API_ERROR", error=str(exc))
                             if client is not None:
@@ -1073,12 +1185,5 @@ def run_benchmark(config: BenchmarkRunConfig) -> Path:
                             "failure_artifact": str(artifact_path) if artifact_path else "",
                         }
                     )
-    _write_run_manifest(
-        run_manifest,
-        config,
-        dataset_names,
-        all_items,
-        started_at=started_at,
-        completed_at=_utc_iso8601(),
-    )
+    _patch_manifest_completion(run_manifest, _utc_iso8601())
     return results_csv

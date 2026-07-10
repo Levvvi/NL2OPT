@@ -249,6 +249,23 @@ def test_report_refuses_duplicate_public_matrix_key(tmp_path: Path) -> None:
         render_benchmark_report(results, manifest, audit, tmp_path / "report.md")
 
 
+def test_report_refuses_duplicate_translation_audit_key(tmp_path: Path) -> None:
+    audit_items = [
+        (dataset, item_id, repetition)
+        for dataset, item_id in (("nl4opt", "n-1"), ("industryor", "i-1"))
+        for repetition in range(1, 4)
+    ]
+    results, manifest, audit = _write_inputs(
+        tmp_path,
+        rows=_result_rows(),
+        audit_status="approved",
+        audit_items=[*audit_items, ("nl4opt", "n-1", 1)],
+    )
+
+    with pytest.raises(ValueError, match="duplicate translation audit key"):
+        render_benchmark_report(results, manifest, audit, tmp_path / "report.md")
+
+
 def test_report_uses_chinese_primary_body(tmp_path: Path) -> None:
     results, manifest, audit = _write_inputs(tmp_path, rows=_result_rows(), audit_status="approved")
     output = tmp_path / "report.md"

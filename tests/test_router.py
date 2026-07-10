@@ -140,6 +140,20 @@ def test_route_specialists_precede_explicit_generic_keywords():
         assert route_text(text).problem_type is expected_problem_type
 
 
+def test_route_specialist_excludes_many_generic_terms_from_candidate_scoring():
+    from nl2opt.agents.router import route_text
+    from nl2opt.schemas import ProblemType
+
+    result = route_text(
+        "\u5458\u5de5\u5206\u914d\u4efb\u52a1\uff0c\u6bcf\u4e2a\u4efb\u52a1\u53ea\u80fd\u5206\u914d\u7ed9\u4e00\u4eba\uff1b"
+        "linear programming linear program integer programming mixed integer milp "
+        "decision variables linear constraints subject to minimize objective profit cost"
+    )
+
+    assert result.problem_type is ProblemType.ASSIGNMENT
+    assert "linear programming" not in result.matched_keywords
+
+
 def test_route_ordinary_english_and_chinese_optimization_wording_to_generic_lp_milp():
     from nl2opt.agents.router import route_text
     from nl2opt.schemas import ProblemType

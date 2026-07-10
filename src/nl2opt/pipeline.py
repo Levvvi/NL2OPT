@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -128,7 +129,12 @@ def render_code_for_spec(spec: Any) -> str:
     raise ValueError(f"unsupported problem_type: {problem_type}")
 
 
-def check_result_for_spec(spec: Any, result: SolverResult) -> CheckerReport:
+def check_result_for_spec(
+    spec: Any,
+    result: SolverResult,
+    *,
+    timeout_sec: float | None = None,
+) -> CheckerReport:
     problem_type = _problem_type_value(spec)
     if problem_type == ProblemType.PRODUCTION.value:
         return check_production_solution(spec, result)
@@ -139,7 +145,7 @@ def check_result_for_spec(spec: Any, result: SolverResult) -> CheckerReport:
     if problem_type == ProblemType.VRP.value:
         return check_vrp_solution(spec, result)
     if problem_type == ProblemType.GENERIC_LP_MILP.value:
-        return check_generic_solution(spec, result)
+        return check_generic_solution(spec, result, timeout_sec=timeout_sec)
     raise ValueError(f"unsupported problem_type: {problem_type}")
 
 
@@ -200,7 +206,9 @@ def run_problem_spec(
         result.violations = [result.error]
         return _write_pipeline_report(result, output_dir)
 
+    solver_started = time.monotonic()
     run_result = run_python_code(code, output_dir, timeout_sec=timeout_sec)
+    checker_timeout_sec = timeout_sec - (time.monotonic() - solver_started)
     result.code_path = str(run_result.code_path)
     result.solution_path = str(run_result.solution_path)
     result.returncode = run_result.returncode
@@ -232,7 +240,7 @@ def run_problem_spec(
     result.objective_value = solver_result.objective_value
 
     try:
-        checker_report = check_result_for_spec(spec, solver_result)
+        checker_report = check_result_for_spec(spec, solver_result, timeout_sec=checker_timeout_sec)
     except Exception as exc:
         result.error = f"checker failed to run: {exc}"
         result.violations = [result.error]

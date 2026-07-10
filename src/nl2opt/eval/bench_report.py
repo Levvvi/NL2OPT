@@ -272,7 +272,10 @@ def _validate_audit_coverage(
             repetition = int(row["repetition"])
         except ValueError as exc:
             raise ValueError(f"invalid translation audit repetition: {row['repetition']!r}") from exc
-        audited.add((row["dataset"].strip().lower(), row["item_id"].strip(), repetition))
+        key = (row["dataset"].strip().lower(), row["item_id"].strip(), repetition)
+        if key in audited:
+            raise ValueError("translation audit contains a duplicate translation audit key")
+        audited.add(key)
     missing = expected - audited
     if missing:
         formatted = ", ".join(f"{dataset}/{item_id}/r{repetition}" for dataset, item_id, repetition in sorted(missing))

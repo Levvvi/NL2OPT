@@ -314,9 +314,11 @@ def route_text(text: str) -> RouterResult:
             reason="未命中 production、assignment、jobshop、vrp 的明显关键词",
         )
 
+    candidate_types = specialized_types if has_specialized_matches else tuple(matches_by_type)
     scores = {
         problem_type: _score(normalized, problem_type, matches)
         for problem_type, matches in matches_by_type.items()
+        if problem_type in candidate_types
     }
     priority = [
         ProblemType.VRP,

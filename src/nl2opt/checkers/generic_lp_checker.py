@@ -37,11 +37,13 @@ def _add_model_constraints(solver: pywraplp.Solver, spec: GenericLpSpec) -> None
             solver.Add(expression == constraint.rhs)
 
 
-def _verify_infeasibility(spec: GenericLpSpec) -> tuple[bool, str]:
+def _verify_infeasibility(spec: GenericLpSpec, timeout_sec: float | None = None) -> tuple[bool, str]:
     solver, solver_name = _create_feasibility_solver(spec)
     if solver is None:
         return False, f"{solver_name} is unavailable"
     _add_model_constraints(solver, spec)
+    if timeout_sec is not None:
+        solver.SetTimeLimit(max(1, math.ceil(timeout_sec * 1000)))
     status = solver.Solve()
     return status == pywraplp.Solver.INFEASIBLE, solver_name
 
@@ -50,18 +52,33 @@ def check_generic_solution(
     spec: GenericLpSpec,
     result: SolverResult,
     tolerance: float = 1e-6,
+    timeout_sec: float | None = None,
 ) -> CheckerReport:
     if result.status is SolverStatus.INFEASIBLE:
-        verified, solver_name = _verify_infeasibility(spec)
+        if timeout_sec is not None and timeout_sec <= 0:
+            return CheckerReport(
+                passed=False,
+                violations=["no remaining time for independent infeasibility verification"],
+                details={"infeasibility_verified": False},
+            )
+        verified, solver_name = _verify_infeasibility(spec, timeout_sec=timeout_sec)
         if verified:
             return CheckerReport(
                 passed=True,
-                details={"infeasibility_verified": True, "verification_solver": solver_name},
+                details={
+                    "infeasibility_verified": True,
+                    "verification_solver": solver_name,
+                    "verification_timeout_sec": timeout_sec,
+                },
             )
         return CheckerReport(
             passed=False,
             violations=["reported infeasibility could not be independently verified"],
-            details={"infeasibility_verified": False, "verification_solver": solver_name},
+            details={
+                "infeasibility_verified": False,
+                "verification_solver": solver_name,
+                "verification_timeout_sec": timeout_sec,
+            },
         )
 
     if result.status not in {SolverStatus.OPTIMAL, SolverStatus.FEASIBLE}:

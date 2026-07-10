@@ -88,3 +88,40 @@ def test_generic_checker_verifies_infeasible_by_independent_feasibility_model():
 
     assert report.passed is True
     assert report.details["infeasibility_verified"] is True
+
+
+def test_generic_checker_bounds_infeasibility_verification_to_remaining_budget(monkeypatch):
+    from ortools.linear_solver import pywraplp
+
+    import nl2opt.checkers.generic_lp_checker as generic_lp_checker
+
+    set_time_limits: list[int] = []
+
+    class FeasibilitySolver:
+        def SetTimeLimit(self, milliseconds: int) -> None:
+            set_time_limits.append(milliseconds)
+
+        def Solve(self) -> int:
+            return pywraplp.Solver.INFEASIBLE
+
+    monkeypatch.setattr(generic_lp_checker, "_create_feasibility_solver", lambda _spec: (FeasibilitySolver(), "GLOP"))
+    monkeypatch.setattr(generic_lp_checker, "_add_model_constraints", lambda *_args: None)
+
+    report = generic_lp_checker.check_generic_solution(
+        infeasible_generic_spec(),
+        infeasible_result(),
+        timeout_sec=0.25,
+    )
+
+    assert report.passed is True
+    assert set_time_limits == [250]
+
+
+def test_generic_checker_fails_closed_when_no_infeasibility_budget_remains():
+    from nl2opt.checkers.generic_lp_checker import check_generic_solution
+
+    report = check_generic_solution(infeasible_generic_spec(), infeasible_result(), timeout_sec=0)
+
+    assert report.passed is False
+    assert report.details["infeasibility_verified"] is False
+    assert "remaining" in report.violations[0]

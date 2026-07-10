@@ -155,6 +155,53 @@ def test_judge_accepts_infeasible_only_when_checker_independently_passes(
     assert judgment.passed_1e_4 is expected
 
 
+@pytest.mark.parametrize("ground_truth", ("No Best Solution", "-99999", -99999))
+def test_judge_treats_revised_infeasible_targets_as_verified_infeasibility(ground_truth: object) -> None:
+    accepted = judge_benchmark_result(
+        prediction={"status": "INFEASIBLE"},
+        ground_truth=ground_truth,
+        spec=None,
+        checker_passed=True,
+        tolerance=1e-6,
+    )
+    rejected = judge_benchmark_result(
+        prediction={"status": "OPTIMAL", "objective_value": -99999},
+        ground_truth=ground_truth,
+        spec=None,
+        checker_passed=True,
+        tolerance=1e-6,
+    )
+
+    assert accepted.passed_1e_6 is True
+    assert rejected.passed_1e_6 is False
+
+
+def test_vendored_nl4opt_answers_are_numeric_or_accepted_infeasible_targets() -> None:
+    datasets_dir = Path(__file__).parents[1] / "eval" / "datasets"
+
+    for item in load_benchmark_dataset("nl4opt", datasets_dir):
+        try:
+            expected = float(item.ground_truth)
+        except (TypeError, ValueError):
+            judgment = judge_benchmark_result(
+                prediction={"status": "INFEASIBLE"},
+                ground_truth=item.ground_truth,
+                spec=None,
+                checker_passed=True,
+                tolerance=1e-6,
+            )
+        else:
+            judgment = judge_benchmark_result(
+                prediction={"status": "OPTIMAL", "objective_value": expected},
+                ground_truth=item.ground_truth,
+                spec=None,
+                checker_passed=True,
+                tolerance=1e-6,
+            )
+
+        assert judgment.passed_1e_6 is True, item.item_id
+
+
 def test_transport_retry_uses_the_pinned_backoff_schedule() -> None:
     attempts = 0
     sleeps: list[int] = []
@@ -352,6 +399,30 @@ def test_resume_does_not_duplicate_completed_attempt(tmp_path: Path) -> None:
     run_benchmark(_fake_config(tmp_path, resume=True))
 
     assert _count_csv_rows(tmp_path / "results.csv") == 1
+
+
+def test_resume_preserves_initial_manifest_started_at(tmp_path: Path) -> None:
+    config = _fake_config(tmp_path)
+    run_benchmark(config)
+    manifest_path = tmp_path / "run_manifest.json"
+    started_at = json.loads(manifest_path.read_text(encoding="utf-8"))["started_at"]
+
+    run_benchmark(_fake_config(tmp_path, resume=True))
+
+    assert json.loads(manifest_path.read_text(encoding="utf-8"))["started_at"] == started_at
+
+
+def test_resume_rejects_protocol_mismatch_before_rewriting_manifest(tmp_path: Path) -> None:
+    run_benchmark(_fake_config(tmp_path))
+    manifest_path = tmp_path / "run_manifest.json"
+    original_manifest = manifest_path.read_text(encoding="utf-8")
+    config = _fake_config(tmp_path, resume=True)
+    config.timeout_sec = 61
+
+    with pytest.raises(ValueError, match="resume manifest mismatch.*timeout_sec"):
+        run_benchmark(config)
+
+    assert manifest_path.read_text(encoding="utf-8") == original_manifest
 
 
 def test_runner_rejects_incompatible_results_header_before_append(tmp_path: Path) -> None:
@@ -589,6 +660,54 @@ def test_translation_audit_selection_is_deterministic_ten_percent(tmp_path: Path
     assert len(selected_items(first.parent / "translation_audit.csv")) == 1
 
 
+def test_translation_audit_resume_does_not_append_duplicate_keys(tmp_path: Path) -> None:
+    datasets_dir = tmp_path / "datasets"
+    _write_dataset(datasets_dir, rows=_rows())
+
+    class NumberPreservingClient:
+        def complete_json(self, _system, prompt, **_kwargs):
+            number = prompt.rsplit("<=", 1)[1].strip()
+            return LLMResponse(
+                content=json.dumps({"translation": f"x \u5c0f\u4e8e\u7b49\u4e8e {number}"}, ensure_ascii=False),
+                provider="fake",
+                model="fake-translator",
+            )
+
+    results = run_benchmark(
+        BenchmarkRunConfig(
+            datasets_dir=datasets_dir,
+            results_csv=tmp_path / "results.csv",
+            dataset="nl4opt",
+            track="zh",
+            repetitions=1,
+            client=NumberPreservingClient(),
+            attempt_runner=_successful_attempt,
+        )
+    )
+    results.write_text(
+        ",".join(benchmark_module._RESULT_FIELDS) + "\n",
+        encoding="utf-8",
+    )
+
+    run_benchmark(
+        BenchmarkRunConfig(
+            datasets_dir=datasets_dir,
+            results_csv=results,
+            dataset="nl4opt",
+            track="zh",
+            repetitions=1,
+            resume=True,
+            client=NumberPreservingClient(),
+            attempt_runner=_successful_attempt,
+        )
+    )
+
+    audit_rows = list(csv.DictReader((results.parent / "translation_audit.csv").open("r", newline="", encoding="utf-8")))
+    assert [(row["dataset"], row["item_id"], row["repetition"]) for row in audit_rows] == [
+        ("nl4opt", "item-0", "1")
+    ]
+
+
 def test_runner_records_industryor_metadata_needed_for_reporting(tmp_path: Path) -> None:
     datasets_dir = tmp_path / "datasets"
     _write_dataset(
@@ -650,6 +769,39 @@ def test_runner_manifest_records_limit_and_selected_item_scope(tmp_path: Path) -
     manifest = json.loads((results.parent / "run_manifest.json").read_text(encoding="utf-8"))
     assert manifest["limit"] == 1
     assert manifest["selected_item_ids"] == {"nl4opt": ["item-0"]}
+
+
+def test_runner_manifest_records_immutable_protocol_fields(tmp_path: Path) -> None:
+    datasets_dir = tmp_path / "datasets"
+    _write_dataset(datasets_dir, rows=_rows())
+
+    results = run_benchmark(
+        BenchmarkRunConfig(
+            datasets_dir=datasets_dir,
+            results_csv=tmp_path / "results.csv",
+            dataset="nl4opt",
+            track="en",
+            repetitions=1,
+            prompt_version="v4",
+            temperature=0.0,
+            requested_model="deepseek-unit-test",
+            attempt_runner=_successful_attempt,
+        )
+    )
+
+    manifest = json.loads((results.parent / "run_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["prompt_version"] == "v4"
+    assert manifest["temperature"] == 0.0
+    assert manifest["requested_model"] == "deepseek-unit-test"
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value"),
+    (("prompt_version", "v5"), ("temperature", 0.1)),
+)
+def test_run_config_rejects_nonimmutable_prompt_protocol(field_name: str, value: object) -> None:
+    with pytest.raises(ValueError, match=field_name):
+        BenchmarkRunConfig(**{field_name: value})
 
 
 def test_cli_exposes_the_benchmark_run_controls() -> None:
