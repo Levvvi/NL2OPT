@@ -629,7 +629,12 @@ def _normalise_attempt(value: Any) -> BenchmarkAttempt:
     )
 
 
-def _retry_checker(attempt: BenchmarkAttempt, config: BenchmarkRunConfig) -> tuple[BenchmarkAttempt, bool]:
+def _retry_checker(
+    attempt: BenchmarkAttempt,
+    config: BenchmarkRunConfig,
+    *,
+    deadline: float,
+) -> tuple[BenchmarkAttempt, bool]:
     if not config.checker_retry or attempt.checker_passed:
         return attempt, False
     runtime_sec = attempt.details.get("runtime_sec")
@@ -637,8 +642,20 @@ def _retry_checker(attempt: BenchmarkAttempt, config: BenchmarkRunConfig) -> tup
         not isinstance(runtime_sec, (int, float))
         or isinstance(runtime_sec, bool)
         or not math.isfinite(runtime_sec)
-        or config.timeout_sec - runtime_sec <= 0
+        or runtime_sec < 0
     ):
+        error = "invalid runtime_sec for checker retry"
+        return BenchmarkAttempt(
+            status=attempt.status,
+            objective_value=attempt.objective_value,
+            checker_passed=False,
+            spec=attempt.spec,
+            solver_result=attempt.solver_result,
+            error=attempt.error or error,
+            details={**attempt.details, "checker_retry_error": error},
+        ), True
+    checker_timeout_sec = deadline - time.monotonic()
+    if not math.isfinite(checker_timeout_sec) or checker_timeout_sec <= 0:
         error = "no remaining time for checker retry"
         return BenchmarkAttempt(
             status=attempt.status,
@@ -649,7 +666,6 @@ def _retry_checker(attempt: BenchmarkAttempt, config: BenchmarkRunConfig) -> tup
             error=attempt.error or error,
             details={**attempt.details, "checker_retry_error": error},
         ), True
-    checker_timeout_sec = config.timeout_sec - runtime_sec
     try:
         if config.checker_retry_runner is not None:
             checker_passed = bool(config.checker_retry_runner(attempt))
@@ -1062,6 +1078,7 @@ def run_benchmark(config: BenchmarkRunConfig) -> Path:
                         continue
 
                     attempt_started = time.perf_counter()
+                    attempt_deadline = time.monotonic() + config.timeout_sec
 
                     translation: TranslationResult | None = None
                     extraction_text = item.question
@@ -1128,7 +1145,7 @@ def run_benchmark(config: BenchmarkRunConfig) -> Path:
                                 attempt_dir = results_csv.parent / "work" / item.dataset / item.item_id / track / str(repetition)
                                 attempt = _run_default_attempt(item, extraction_text, repetition, config, client, attempt_dir)
                         assert attempt is not None
-                        attempt, checker_retried = _retry_checker(attempt, config)
+                        attempt, checker_retried = _retry_checker(attempt, config, deadline=attempt_deadline)
                         status = attempt.status
                         judgment = judge_benchmark_result(
                             prediction={"status": attempt.status, "objective_value": attempt.objective_value},

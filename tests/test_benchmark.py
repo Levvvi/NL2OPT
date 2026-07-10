@@ -441,7 +441,7 @@ def test_resume_rejects_missing_immutable_limit_before_rewriting_manifest(tmp_pa
     assert manifest_path.read_text(encoding="utf-8") == original_manifest
 
 
-def test_checker_retry_forwards_remaining_solver_budget(monkeypatch) -> None:
+def test_runner_checker_retry_forwards_actual_deadline_remaining_after_initial_checker(tmp_path: Path, monkeypatch) -> None:
     from nl2opt.checkers.base import CheckerReport
 
     observed_timeouts: list[float] = []
@@ -451,24 +451,25 @@ def test_checker_retry_forwards_remaining_solver_budget(monkeypatch) -> None:
         return CheckerReport(passed=True)
 
     monkeypatch.setattr(benchmark_module, "check_result_for_spec", bounded_check)
-    attempt = BenchmarkAttempt(
+    clock_values = iter((100.0, 109.5))
+    monkeypatch.setattr(benchmark_module.time, "monotonic", lambda: next(clock_values))
+    config = _fake_config(tmp_path)
+    config.checker_retry = True
+    config.timeout_sec = 10
+    config.attempt_runner = lambda *_args: BenchmarkAttempt(
         status="INFEASIBLE",
         checker_passed=False,
         spec=object(),
         solver_result=object(),
-        details={"runtime_sec": 9.25},
+        details={"runtime_sec": 1.0},
     )
-    config = BenchmarkRunConfig(checker_retry=True, timeout_sec=10)
 
-    retried, checker_retried = benchmark_module._retry_checker(attempt, config)
+    run_benchmark(config)
 
-    assert checker_retried is True
-    assert retried.checker_passed is True
-    assert observed_timeouts == [0.75]
+    assert observed_timeouts == [0.5]
 
 
-@pytest.mark.parametrize("details", ({}, {"runtime_sec": 10}, {"runtime_sec": 12}))
-def test_checker_retry_fails_closed_without_positive_remaining_budget(monkeypatch, details: dict[str, object]) -> None:
+def test_runner_checker_retry_fails_closed_when_deadline_is_exhausted(tmp_path: Path, monkeypatch) -> None:
     from nl2opt.checkers.base import CheckerReport
 
     calls = 0
@@ -479,7 +480,50 @@ def test_checker_retry_fails_closed_without_positive_remaining_budget(monkeypatc
         return CheckerReport(passed=True)
 
     monkeypatch.setattr(benchmark_module, "check_result_for_spec", unbounded_check)
-    attempt = BenchmarkAttempt(
+    clock_values = iter((100.0, 110.0))
+    monkeypatch.setattr(benchmark_module.time, "monotonic", lambda: next(clock_values))
+    config = _fake_config(tmp_path)
+    config.checker_retry = True
+    config.timeout_sec = 10
+    config.attempt_runner = lambda *_args: BenchmarkAttempt(
+        status="INFEASIBLE",
+        checker_passed=False,
+        spec=object(),
+        solver_result=object(),
+        details={"runtime_sec": 1.0},
+    )
+
+    results = run_benchmark(config)
+    row = next(csv.DictReader(results.open("r", newline="", encoding="utf-8")))
+
+    assert row["checker_passed"] == "False"
+    assert "remaining" in row["error"]
+    assert calls == 0
+
+
+@pytest.mark.parametrize("runtime_sec", (None, -0.1))
+def test_runner_checker_retry_fails_closed_for_missing_or_negative_runtime(
+    tmp_path: Path,
+    monkeypatch,
+    runtime_sec: float | None,
+) -> None:
+    from nl2opt.checkers.base import CheckerReport
+
+    calls = 0
+
+    def unbounded_check(*_args: object, **_kwargs: object) -> CheckerReport:
+        nonlocal calls
+        calls += 1
+        return CheckerReport(passed=True)
+
+    monkeypatch.setattr(benchmark_module, "check_result_for_spec", unbounded_check)
+    clock_values = iter((100.0, 101.0))
+    monkeypatch.setattr(benchmark_module.time, "monotonic", lambda: next(clock_values))
+    details = {} if runtime_sec is None else {"runtime_sec": runtime_sec}
+    config = _fake_config(tmp_path)
+    config.checker_retry = True
+    config.timeout_sec = 10
+    config.attempt_runner = lambda *_args: BenchmarkAttempt(
         status="INFEASIBLE",
         checker_passed=False,
         spec=object(),
@@ -487,14 +531,11 @@ def test_checker_retry_fails_closed_without_positive_remaining_budget(monkeypatc
         details=details,
     )
 
-    retried, checker_retried = benchmark_module._retry_checker(
-        attempt,
-        BenchmarkRunConfig(checker_retry=True, timeout_sec=10),
-    )
+    results = run_benchmark(config)
+    row = next(csv.DictReader(results.open("r", newline="", encoding="utf-8")))
 
-    assert checker_retried is True
-    assert retried.checker_passed is False
-    assert "remaining" in (retried.error or "")
+    assert row["checker_passed"] == "False"
+    assert "runtime_sec" in row["error"]
     assert calls == 0
 
 
