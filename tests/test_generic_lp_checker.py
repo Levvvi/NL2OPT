@@ -125,3 +125,13 @@ def test_generic_checker_fails_closed_when_no_infeasibility_budget_remains():
     assert report.passed is False
     assert report.details["infeasibility_verified"] is False
     assert "remaining" in report.violations[0]
+
+
+def test_generic_checker_fails_closed_when_residual_is_less_than_one_millisecond():
+    from nl2opt.checkers.generic_lp_checker import check_generic_solution
+
+    report = check_generic_solution(infeasible_generic_spec(), infeasible_result(), timeout_sec=0.0009)
+
+    assert report.passed is False
+    assert report.details["infeasibility_verified"] is False
+    assert "remaining" in report.violations[0]

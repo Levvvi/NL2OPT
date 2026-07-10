@@ -176,30 +176,32 @@ def test_judge_treats_revised_infeasible_targets_as_verified_infeasibility(groun
     assert rejected.passed_1e_6 is False
 
 
-def test_vendored_nl4opt_answers_are_numeric_or_accepted_infeasible_targets() -> None:
+def test_vendored_answers_are_numeric_or_accepted_infeasible_targets() -> None:
     datasets_dir = Path(__file__).parents[1] / "eval" / "datasets"
+    dataset_names = json.loads((datasets_dir / "manifest.json").read_text(encoding="utf-8"))["datasets"]
 
-    for item in load_benchmark_dataset("nl4opt", datasets_dir):
-        try:
-            expected = float(item.ground_truth)
-        except (TypeError, ValueError):
-            judgment = judge_benchmark_result(
-                prediction={"status": "INFEASIBLE"},
-                ground_truth=item.ground_truth,
-                spec=None,
-                checker_passed=True,
-                tolerance=1e-6,
-            )
-        else:
-            judgment = judge_benchmark_result(
-                prediction={"status": "OPTIMAL", "objective_value": expected},
-                ground_truth=item.ground_truth,
-                spec=None,
-                checker_passed=True,
-                tolerance=1e-6,
-            )
+    for dataset_name in dataset_names:
+        for item in load_benchmark_dataset(dataset_name, datasets_dir):
+            try:
+                expected = float(item.ground_truth)
+            except (TypeError, ValueError):
+                judgment = judge_benchmark_result(
+                    prediction={"status": "INFEASIBLE"},
+                    ground_truth=item.ground_truth,
+                    spec=None,
+                    checker_passed=True,
+                    tolerance=1e-6,
+                )
+            else:
+                judgment = judge_benchmark_result(
+                    prediction={"status": "OPTIMAL", "objective_value": expected},
+                    ground_truth=item.ground_truth,
+                    spec=None,
+                    checker_passed=True,
+                    tolerance=1e-6,
+                )
 
-        assert judgment.passed_1e_6 is True, item.item_id
+            assert judgment.passed_1e_6 is True, f"{dataset_name}/{item.item_id}"
 
 
 def test_transport_retry_uses_the_pinned_backoff_schedule() -> None:
@@ -423,6 +425,77 @@ def test_resume_rejects_protocol_mismatch_before_rewriting_manifest(tmp_path: Pa
         run_benchmark(config)
 
     assert manifest_path.read_text(encoding="utf-8") == original_manifest
+
+
+def test_resume_rejects_missing_immutable_limit_before_rewriting_manifest(tmp_path: Path) -> None:
+    run_benchmark(_fake_config(tmp_path))
+    manifest_path = tmp_path / "run_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest.pop("limit")
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    original_manifest = manifest_path.read_text(encoding="utf-8")
+
+    with pytest.raises(ValueError, match="resume manifest mismatch.*limit"):
+        run_benchmark(_fake_config(tmp_path, resume=True))
+
+    assert manifest_path.read_text(encoding="utf-8") == original_manifest
+
+
+def test_checker_retry_forwards_remaining_solver_budget(monkeypatch) -> None:
+    from nl2opt.checkers.base import CheckerReport
+
+    observed_timeouts: list[float] = []
+
+    def bounded_check(_spec: object, _result: object, *, timeout_sec: float) -> CheckerReport:
+        observed_timeouts.append(timeout_sec)
+        return CheckerReport(passed=True)
+
+    monkeypatch.setattr(benchmark_module, "check_result_for_spec", bounded_check)
+    attempt = BenchmarkAttempt(
+        status="INFEASIBLE",
+        checker_passed=False,
+        spec=object(),
+        solver_result=object(),
+        details={"runtime_sec": 9.25},
+    )
+    config = BenchmarkRunConfig(checker_retry=True, timeout_sec=10)
+
+    retried, checker_retried = benchmark_module._retry_checker(attempt, config)
+
+    assert checker_retried is True
+    assert retried.checker_passed is True
+    assert observed_timeouts == [0.75]
+
+
+@pytest.mark.parametrize("details", ({}, {"runtime_sec": 10}, {"runtime_sec": 12}))
+def test_checker_retry_fails_closed_without_positive_remaining_budget(monkeypatch, details: dict[str, object]) -> None:
+    from nl2opt.checkers.base import CheckerReport
+
+    calls = 0
+
+    def unbounded_check(*_args: object, **_kwargs: object) -> CheckerReport:
+        nonlocal calls
+        calls += 1
+        return CheckerReport(passed=True)
+
+    monkeypatch.setattr(benchmark_module, "check_result_for_spec", unbounded_check)
+    attempt = BenchmarkAttempt(
+        status="INFEASIBLE",
+        checker_passed=False,
+        spec=object(),
+        solver_result=object(),
+        details=details,
+    )
+
+    retried, checker_retried = benchmark_module._retry_checker(
+        attempt,
+        BenchmarkRunConfig(checker_retry=True, timeout_sec=10),
+    )
+
+    assert checker_retried is True
+    assert retried.checker_passed is False
+    assert "remaining" in (retried.error or "")
+    assert calls == 0
 
 
 def test_runner_rejects_incompatible_results_header_before_append(tmp_path: Path) -> None:

@@ -43,7 +43,7 @@ def _verify_infeasibility(spec: GenericLpSpec, timeout_sec: float | None = None)
         return False, f"{solver_name} is unavailable"
     _add_model_constraints(solver, spec)
     if timeout_sec is not None:
-        solver.SetTimeLimit(max(1, math.ceil(timeout_sec * 1000)))
+        solver.SetTimeLimit(math.floor(timeout_sec * 1000))
     status = solver.Solve()
     return status == pywraplp.Solver.INFEASIBLE, solver_name
 
@@ -55,7 +55,9 @@ def check_generic_solution(
     timeout_sec: float | None = None,
 ) -> CheckerReport:
     if result.status is SolverStatus.INFEASIBLE:
-        if timeout_sec is not None and timeout_sec <= 0:
+        if timeout_sec is not None and (
+            not math.isfinite(timeout_sec) or math.floor(timeout_sec * 1000) < 1
+        ):
             return CheckerReport(
                 passed=False,
                 violations=["no remaining time for independent infeasibility verification"],

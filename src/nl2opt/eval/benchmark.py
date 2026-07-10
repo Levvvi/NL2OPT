@@ -632,11 +632,31 @@ def _normalise_attempt(value: Any) -> BenchmarkAttempt:
 def _retry_checker(attempt: BenchmarkAttempt, config: BenchmarkRunConfig) -> tuple[BenchmarkAttempt, bool]:
     if not config.checker_retry or attempt.checker_passed:
         return attempt, False
+    runtime_sec = attempt.details.get("runtime_sec")
+    if (
+        not isinstance(runtime_sec, (int, float))
+        or isinstance(runtime_sec, bool)
+        or not math.isfinite(runtime_sec)
+        or config.timeout_sec - runtime_sec <= 0
+    ):
+        error = "no remaining time for checker retry"
+        return BenchmarkAttempt(
+            status=attempt.status,
+            objective_value=attempt.objective_value,
+            checker_passed=False,
+            spec=attempt.spec,
+            solver_result=attempt.solver_result,
+            error=attempt.error or error,
+            details={**attempt.details, "checker_retry_error": error},
+        ), True
+    checker_timeout_sec = config.timeout_sec - runtime_sec
     try:
         if config.checker_retry_runner is not None:
             checker_passed = bool(config.checker_retry_runner(attempt))
         elif attempt.spec is not None and attempt.solver_result is not None:
-            checker_passed = bool(check_result_for_spec(attempt.spec, attempt.solver_result).passed)
+            checker_passed = bool(
+                check_result_for_spec(attempt.spec, attempt.solver_result, timeout_sec=checker_timeout_sec).passed
+            )
         else:
             return attempt, False
     except Exception as exc:
@@ -949,7 +969,11 @@ def _resume_manifest_mismatches(existing: dict[str, Any], expected: dict[str, An
         "requested_model",
         "selected_item_ids",
     )
-    mismatches = [field_name for field_name in fields if existing.get(field_name) != expected[field_name]]
+    mismatches = [
+        field_name
+        for field_name in fields
+        if field_name not in existing or existing[field_name] != expected[field_name]
+    ]
     existing_datasets = existing.get("datasets")
     if not isinstance(existing_datasets, dict):
         return [*mismatches, "datasets"]
