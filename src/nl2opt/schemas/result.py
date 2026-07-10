@@ -10,6 +10,7 @@ class SolverStatus(str, Enum):
     OPTIMAL = "OPTIMAL"
     FEASIBLE = "FEASIBLE"
     INFEASIBLE = "INFEASIBLE"
+    UNBOUNDED = "UNBOUNDED"
     ERROR = "ERROR"
 
 

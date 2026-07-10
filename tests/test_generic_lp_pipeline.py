@@ -62,3 +62,31 @@ def test_generic_milp_pipeline_uses_scip(tmp_path):
     assert result.checker_passed is True
     solution = json.loads(Path(result.solution_path).read_text(encoding="utf-8"))
     assert solution["solver"] == "ortools.linear_solver:SCIP"
+
+
+def test_generic_lp_pipeline_reports_unbounded_status_without_checker_exception(tmp_path):
+    from nl2opt.pipeline import run_problem_spec
+    from nl2opt.schemas import GenericLpSpec
+
+    spec = GenericLpSpec.model_validate(
+        {
+            "problem_id": "unbounded_generic",
+            "problem_type": "generic_lp_milp",
+            "variables": [{"name": "x", "lb": 0, "ub": None, "is_integer": False}],
+            "objective": {
+                "sense": "maximize",
+                "name": "value",
+                "terms": [{"var": "x", "coef": 1}],
+            },
+            "constraints": [],
+            "assumptions": [],
+            "missing_fields": [],
+        }
+    )
+
+    result = run_problem_spec(spec, tmp_path, timeout_sec=5)
+
+    assert result.solver_status == "UNBOUNDED"
+    assert result.checker_passed is False
+    assert result.error == "checker failed"
+    assert result.violations == ["solver status is not feasible: UNBOUNDED"]

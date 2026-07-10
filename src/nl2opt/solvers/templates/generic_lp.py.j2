@@ -37,6 +37,9 @@ def main():
             )
             return
 
+        if solver_name == "GLOP":
+            solver.SetSolverSpecificParametersAsString("use_preprocessing: false")
+
         variables = {}
         for variable in SPEC["variables"]:
             upper_bound = solver.infinity() if variable["ub"] is None else variable["ub"]
@@ -67,6 +70,7 @@ def main():
             pywraplp.Solver.OPTIMAL: "OPTIMAL",
             pywraplp.Solver.FEASIBLE: "FEASIBLE",
             pywraplp.Solver.INFEASIBLE: "INFEASIBLE",
+            pywraplp.Solver.UNBOUNDED: "UNBOUNDED",
         }
         status = status_map.get(status_code, "ERROR")
         solution = {}
