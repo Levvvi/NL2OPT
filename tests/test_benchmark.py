@@ -3,13 +3,17 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 
-from nl2opt.agents.llm_client import LLMResponse
+import nl2opt.eval.benchmark as benchmark_module
+from nl2opt.agents.extractor import ExtractorResult
+from nl2opt.agents.llm_client import LLMResponse, MockLLMClient
 from nl2opt.eval.benchmark import (
     BenchmarkAttempt,
+    BenchmarkItem,
     BenchmarkRunConfig,
     call_with_transport_retry,
     judge_benchmark_result,
@@ -166,6 +170,117 @@ def test_transport_retry_uses_the_pinned_backoff_schedule() -> None:
     assert sleeps == [2, 4]
 
 
+def test_default_attempt_short_circuits_unsupported_route_before_extraction(tmp_path: Path, monkeypatch) -> None:
+    item = BenchmarkItem("nl4opt", "unsupported-item", "irrelevant", 1, {})
+    config = BenchmarkRunConfig(results_csv=tmp_path / "results.csv", dataset="nl4opt", track="en", repetitions=1)
+
+    def extractor_must_not_run(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("extractor must not run for an unsupported router result")
+
+    monkeypatch.setattr(benchmark_module, "extract_problem_spec", extractor_must_not_run)
+
+    attempt = benchmark_module._run_default_attempt(
+        item,
+        "Please write a poem about spring.",
+        1,
+        config,
+        MockLLMClient({}),
+        tmp_path / "attempt",
+    )
+
+    assert attempt.status == "UNSUPPORTED"
+    assert attempt.details["router_problem_type"] == "unsupported"
+    assert attempt.details["router_reason"]
+
+
+def test_runner_records_complete_failure_telemetry_and_utc_manifest_times(tmp_path: Path, monkeypatch) -> None:
+    datasets_dir = tmp_path / "datasets"
+    _write_dataset(datasets_dir, rows=_rows())
+
+    def response_backed_extraction(*_args: object, **_kwargs: object) -> ExtractorResult:
+        return ExtractorResult(
+            text="maximize x subject to x <= 1",
+            problem_type="generic_lp_milp",
+            success=False,
+            spec=None,
+            spec_dict=None,
+            raw_response="{}",
+            system_prompt="system",
+            user_prompt="user",
+            validation_errors=["invalid spec"],
+            error="schema validation failed",
+            provider="fake-provider",
+            model="fake-extractor",
+            prompt_version="v4",
+        )
+
+    monkeypatch.setattr(benchmark_module, "extract_problem_spec", response_backed_extraction)
+    results = run_benchmark(
+        BenchmarkRunConfig(
+            datasets_dir=datasets_dir,
+            results_csv=tmp_path / "results.csv",
+            dataset="nl4opt",
+            track="en",
+            repetitions=1,
+            client=MockLLMClient({}),
+        )
+    )
+
+    row = next(csv.DictReader(results.open("r", newline="", encoding="utf-8")))
+    assert row["failure_category"] == "EXTRACT_ERR"
+    assert row["router_problem_type"] == "generic_lp_milp"
+    assert row["extractor_provider"] == "fake-provider"
+    assert row["extractor_model"] == "fake-extractor"
+    assert float(row["wall_sec"]) >= 0
+    assert row["evaluated_at"].endswith("Z")
+    assert datetime.fromisoformat(row["evaluated_at"].removesuffix("Z") + "+00:00").tzinfo is not None
+
+    artifact = json.loads(Path(row["failure_artifact"]).read_text(encoding="utf-8"))
+    assert artifact["failure_category"] == "EXTRACT_ERR"
+    assert artifact["router_problem_type"] == "generic_lp_milp"
+
+    manifest = json.loads((results.parent / "run_manifest.json").read_text(encoding="utf-8"))
+    for key in ("started_at", "completed_at"):
+        assert manifest[key].endswith("Z")
+        assert datetime.fromisoformat(manifest[key].removesuffix("Z") + "+00:00").tzinfo is not None
+
+
+@pytest.mark.parametrize(
+    ("attempt", "ground_truth", "expected_category"),
+    [
+        (BenchmarkAttempt(status="UNSUPPORTED"), 1, "UNSUPPORTED"),
+        (BenchmarkAttempt(status="API_ERROR", error="LLM client failed"), 1, "API_ERR"),
+        (BenchmarkAttempt(status="EXTRACTION_ERROR", error="schema validation failed"), 1, "EXTRACT_ERR"),
+        (BenchmarkAttempt(status="TIMEOUT", error="solver timed out"), 1, "SOLVE_TIMEOUT"),
+        (BenchmarkAttempt(status="INFEASIBLE", checker_passed=False), "INFEASIBLE", "INFEASIBLE_MISMATCH"),
+        (BenchmarkAttempt(status="OPTIMAL", objective_value=2.0, checker_passed=True), 1, "WRONG_OPT"),
+        (BenchmarkAttempt(status="ERROR", error="solver process failed"), 1, "CODEGEN_ERR"),
+    ],
+)
+def test_runner_uses_protocol_failure_categories(
+    tmp_path: Path,
+    attempt: BenchmarkAttempt,
+    ground_truth: object,
+    expected_category: str,
+) -> None:
+    datasets_dir = tmp_path / "datasets"
+    _write_dataset(datasets_dir, rows=[{"id": "one", "en_question": "maximize x subject to x <= 1", "en_answer": ground_truth}])
+
+    results = run_benchmark(
+        BenchmarkRunConfig(
+            datasets_dir=datasets_dir,
+            results_csv=tmp_path / "results.csv",
+            dataset="nl4opt",
+            track="en",
+            repetitions=1,
+            attempt_runner=lambda *_args: attempt,
+        )
+    )
+
+    row = next(csv.DictReader(results.open("r", newline="", encoding="utf-8")))
+    assert row["failure_category"] == expected_category
+
+
 def test_resume_does_not_duplicate_completed_attempt(tmp_path: Path) -> None:
     run_benchmark(_fake_config(tmp_path))
     run_benchmark(_fake_config(tmp_path, resume=True))
@@ -260,6 +375,7 @@ def test_translation_number_mismatch_blocks_extraction_and_records_failure(tmp_p
 
     row = next(csv.DictReader(results.open("r", newline="", encoding="utf-8")))
     assert row["status"] == "translation_number_mismatch"
+    assert row["failure_category"] == "EXTRACT_ERR"
     assert row["translation_model"] == "fake-translator"
     assert calls == 0
     assert len(list((results.parent / "failures").glob("*.json"))) == 1

@@ -116,6 +116,19 @@ def test_route_bilingual_generic_linear_programs():
     assert chinese.problem_type is ProblemType.GENERIC_LP_MILP
 
 
+def test_route_ordinary_english_and_chinese_optimization_wording_to_generic_lp_milp():
+    from nl2opt.agents.router import route_text
+    from nl2opt.schemas import ProblemType
+
+    english = route_text(
+        "Minimize total transport time when there can be at most 12 boat trips and at least 60% use canoes."
+    )
+    chinese = route_text("最小化总时间，x 至少为 10，且 x 不超过 100。")
+
+    assert english.problem_type is ProblemType.GENERIC_LP_MILP
+    assert chinese.problem_type is ProblemType.GENERIC_LP_MILP
+
+
 def test_route_rejects_clear_nonlinear_stochastic_and_dynamic_requests():
     from nl2opt.agents.router import route_text
     from nl2opt.schemas import ProblemType

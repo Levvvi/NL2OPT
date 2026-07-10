@@ -120,6 +120,23 @@ REJECTION_KEYWORDS = [
     "动态优化",
 ]
 
+GENERIC_OPTIMIZATION_SIGNALS = [
+    "minimize",
+    "maximize",
+    "at most",
+    "at least",
+    "subject to",
+    "constraint",
+    "最小化",
+    "最大化",
+    "至多",
+    "至少",
+    "约束",
+    "满足以下约束",
+    "不超过",
+    "不少于",
+]
+
 
 def _matched_keywords(text: str, keywords: list[str]) -> list[str]:
     lowered = text.lower()
@@ -210,6 +227,21 @@ def route_text(text: str) -> RouterResult:
         problem_type: _matched_keywords(normalized, keywords)
         for problem_type, keywords in KEYWORDS.items()
     }
+    specialized_types = (
+        ProblemType.PRODUCTION,
+        ProblemType.ASSIGNMENT,
+        ProblemType.JOBSHOP,
+        ProblemType.VRP,
+    )
+    generic_signals = _matched_keywords(normalized, GENERIC_OPTIMIZATION_SIGNALS)
+    if not any(matches_by_type[problem_type] for problem_type in specialized_types) and generic_signals:
+        generic_matches = list(dict.fromkeys([*matches_by_type[ProblemType.GENERIC_LP_MILP], *generic_signals]))
+        return RouterResult(
+            problem_type=ProblemType.GENERIC_LP_MILP,
+            confidence=_confidence(float(len(generic_matches)), 0.0, len(generic_matches)),
+            matched_keywords=generic_matches,
+            reason="matched generic optimization objective or constraint wording",
+        )
     if not any(matches_by_type.values()):
         return RouterResult(
             problem_type=ProblemType.UNSUPPORTED,

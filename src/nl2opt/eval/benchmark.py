@@ -16,6 +16,7 @@ import shutil
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field, is_dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol, TypeVar
 
@@ -71,6 +72,12 @@ _RESULT_FIELDS = (
     "translation_numbers_match",
     "api_attempts",
     "checker_retried",
+    "failure_category",
+    "router_problem_type",
+    "extractor_provider",
+    "extractor_model",
+    "wall_sec",
+    "evaluated_at",
     "error",
     "failure_artifact",
 )
@@ -510,19 +517,45 @@ def _run_default_attempt(
     output_dir: Path,
 ) -> BenchmarkAttempt:
     del item, repetition
+    route_details: dict[str, Any] = {}
     try:
         route = route_text(text)
+        route_details = {
+            "router_problem_type": route.problem_type.value,
+            "router_reason": route.reason,
+        }
+        if route.problem_type.value == "unsupported":
+            return BenchmarkAttempt(
+                status="UNSUPPORTED",
+                error=route.reason,
+                details=route_details,
+            )
         extraction = extract_problem_spec(
             text,
             problem_type=route.problem_type,
             client=_RetryingJsonClient(client, config.sleep),
             prompt_version="v4",
         )
+        extraction_details = {
+            **route_details,
+            "extractor_provider": extraction.provider or "",
+            "extractor_model": extraction.model or "",
+        }
         if not extraction.success or extraction.spec is None:
-            return BenchmarkAttempt(status="EXTRACTION_ERROR", error=extraction.error or "extraction failed")
+            status = "API_ERROR" if _error_is_transport_or_client(extraction.error) else "EXTRACTION_ERROR"
+            return BenchmarkAttempt(
+                status=status,
+                error=extraction.error or "extraction failed",
+                details=extraction_details,
+            )
         spec = extraction.spec
         if getattr(spec, "problem_type", None) == "unsupported":
-            return BenchmarkAttempt(status="UNSUPPORTED", spec=spec, error=getattr(spec, "reason", "unsupported"))
+            return BenchmarkAttempt(
+                status="UNSUPPORTED",
+                spec=spec,
+                error=getattr(spec, "reason", "unsupported"),
+                details=extraction_details,
+            )
         pipeline_result = run_problem_spec(spec, output_dir, timeout_sec=config.timeout_sec)
         solver_result = None
         if pipeline_result.solution_path:
@@ -537,6 +570,7 @@ def _run_default_attempt(
             solver_result=solver_result,
             error=pipeline_result.error,
             details={
+                **extraction_details,
                 "runtime_sec": pipeline_result.runtime_sec,
                 "violations": pipeline_result.violations,
                 "returncode": pipeline_result.returncode,
@@ -544,7 +578,11 @@ def _run_default_attempt(
             },
         )
     except Exception as exc:
-        return BenchmarkAttempt(status="ERROR", error=str(exc))
+        return BenchmarkAttempt(
+            status="API_ERROR" if _is_transport_failure(exc) else "ERROR",
+            error=str(exc),
+            details=route_details,
+        )
 
 
 def _normalise_attempt(value: Any) -> BenchmarkAttempt:
@@ -698,6 +736,62 @@ def _attempt_problem_type(attempt: BenchmarkAttempt | None) -> str:
     return str(getattr(value, "value", value)) if value is not None else ""
 
 
+def _attempt_detail(attempt: BenchmarkAttempt | None, key: str) -> str:
+    if attempt is None:
+        return ""
+    value = attempt.details.get(key, "")
+    return str(value) if value is not None else ""
+
+
+def _error_is_transport_or_client(error: str | None) -> bool:
+    if not error:
+        return False
+    normalized = error.lower()
+    return any(
+        signal in normalized
+        for signal in (
+            "llm client",
+            "api key",
+            "api error",
+            "connection",
+            "transport",
+            "rate limit",
+            "request timeout",
+        )
+    )
+
+
+def _failure_category(
+    *,
+    status: str,
+    error: str | None,
+    attempt: BenchmarkAttempt | None,
+    judgment: BenchmarkJudgment | None,
+) -> str:
+    if judgment is not None and judgment.passed_1e_6:
+        return ""
+
+    normalized_status = status.upper()
+    router_problem_type = _attempt_detail(attempt, "router_problem_type").lower()
+    if normalized_status == "UNSUPPORTED" or router_problem_type == "unsupported" or _attempt_problem_type(attempt) == "unsupported":
+        return "UNSUPPORTED"
+    if normalized_status in {"TIMEOUT", "SOLVE_TIMEOUT"}:
+        return "SOLVE_TIMEOUT"
+    if normalized_status in {"API_ERROR", "API_ERR"} or _error_is_transport_or_client(error):
+        return "API_ERR"
+    if normalized_status in {"EXTRACTION_ERROR", "TRANSLATION_ERROR", "TRANSLATION_NUMBER_MISMATCH"}:
+        return "EXTRACT_ERR"
+    if judgment is not None and "infeasible" in judgment.reason:
+        return "INFEASIBLE_MISMATCH"
+    if judgment is not None and judgment.reason == "objective_mismatch":
+        return "WRONG_OPT"
+    return "CODEGEN_ERR"
+
+
+def _utc_iso8601() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+
+
 def _write_failure_artifact(
     output_dir: Path,
     *,
@@ -710,6 +804,9 @@ def _write_failure_artifact(
     attempt: BenchmarkAttempt | None,
     judgment: BenchmarkJudgment | None,
     error: str | None,
+    failure_category: str,
+    wall_sec: float,
+    evaluated_at: str,
 ) -> Path:
     failures_dir = output_dir / "failures"
     failures_dir.mkdir(parents=True, exist_ok=True)
@@ -727,6 +824,13 @@ def _write_failure_artifact(
         "translation": asdict(translation) if translation is not None else None,
         "attempt": _attempt_payload(attempt) if attempt is not None else None,
         "judgment": judgment.to_dict() if judgment is not None else None,
+        "failure_category": failure_category,
+        "router_problem_type": _attempt_detail(attempt, "router_problem_type"),
+        "router_reason": _attempt_detail(attempt, "router_reason"),
+        "extractor_provider": _attempt_detail(attempt, "extractor_provider"),
+        "extractor_model": _attempt_detail(attempt, "extractor_model"),
+        "wall_sec": wall_sec,
+        "evaluated_at": evaluated_at,
         "error": error,
     }
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
@@ -738,6 +842,8 @@ def _write_run_manifest(
     config: BenchmarkRunConfig,
     dataset_names: tuple[str, ...],
     items: list[BenchmarkItem],
+    started_at: str,
+    completed_at: str,
 ) -> None:
     entries = {}
     for name in dataset_names:
@@ -755,6 +861,8 @@ def _write_run_manifest(
                 "timeout_sec": config.timeout_sec,
                 "tolerance": config.tolerance,
                 "translation_audit_fraction": config.audit_fraction,
+                "started_at": started_at,
+                "completed_at": completed_at,
                 "datasets": entries,
                 "selected_item_ids": {
                     dataset_name: [item.item_id for item in items if item.dataset == dataset_name]
@@ -779,7 +887,7 @@ def run_benchmark(config: BenchmarkRunConfig) -> Path:
     for dataset_name in dataset_names:
         items = load_benchmark_dataset(dataset_name, config.datasets_dir)
         all_items.extend(items[: config.limit] if config.limit is not None else items)
-    _write_run_manifest(run_manifest, config, dataset_names, all_items)
+    started_at = _utc_iso8601()
 
     existing_keys = _resume_keys(results_csv) if config.resume else set()
     audit_keys = _audit_item_keys(all_items, config.audit_fraction)
@@ -804,6 +912,8 @@ def run_benchmark(config: BenchmarkRunConfig) -> Path:
                     key = (item.dataset, item.item_id, track, repetition, checker_retry_value)
                     if key in existing_keys:
                         continue
+
+                    attempt_started = time.perf_counter()
 
                     translation: TranslationResult | None = None
                     extraction_text = item.question
@@ -877,6 +987,14 @@ def run_benchmark(config: BenchmarkRunConfig) -> Path:
                             error = attempt.error or judgment.reason
 
                     failed = judgment is None or not judgment.passed_1e_6
+                    wall_sec = time.perf_counter() - attempt_started
+                    evaluated_at = _utc_iso8601()
+                    failure_category = _failure_category(
+                        status=status,
+                        error=error,
+                        attempt=attempt,
+                        judgment=judgment,
+                    )
                     artifact_path = None
                     if failed:
                         artifact_path = _write_failure_artifact(
@@ -890,6 +1008,9 @@ def run_benchmark(config: BenchmarkRunConfig) -> Path:
                             attempt=attempt,
                             judgment=judgment,
                             error=error,
+                            failure_category=failure_category,
+                            wall_sec=wall_sec,
+                            evaluated_at=evaluated_at,
                         )
                         work_dir = _attempt_work_dir(attempt)
                         if work_dir is not None and work_dir.exists():
@@ -921,8 +1042,22 @@ def run_benchmark(config: BenchmarkRunConfig) -> Path:
                             "translation_numbers_match": "" if translation is None else translation.numbers_match,
                             "api_attempts": translation.api_attempts if translation else 0,
                             "checker_retried": checker_retried,
+                            "failure_category": failure_category,
+                            "router_problem_type": _attempt_detail(attempt, "router_problem_type"),
+                            "extractor_provider": _attempt_detail(attempt, "extractor_provider"),
+                            "extractor_model": _attempt_detail(attempt, "extractor_model"),
+                            "wall_sec": wall_sec,
+                            "evaluated_at": evaluated_at,
                             "error": error or "",
                             "failure_artifact": str(artifact_path) if artifact_path else "",
                         }
                     )
+    _write_run_manifest(
+        run_manifest,
+        config,
+        dataset_names,
+        all_items,
+        started_at=started_at,
+        completed_at=_utc_iso8601(),
+    )
     return results_csv
