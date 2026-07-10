@@ -125,6 +125,21 @@ def test_route_explicit_linear_program_keyword_to_generic_lp_milp():
     assert result.problem_type is ProblemType.GENERIC_LP_MILP
 
 
+def test_route_specialists_precede_explicit_generic_keywords():
+    from nl2opt.agents.router import route_text
+    from nl2opt.schemas import ProblemType
+
+    cases = (
+        ("工厂生产产品，原料和工时有限；这是一个 linear program。", ProblemType.PRODUCTION),
+        ("员工分配任务，每个任务只能分配给一人；这是一个 linear program。", ProblemType.ASSIGNMENT),
+        ("工件按工序在机器上加工，最小化完工时间；这是一个 linear program。", ProblemType.JOBSHOP),
+        ("车辆从仓库为客户配送，车辆容量有限；这是一个 linear program。", ProblemType.VRP),
+    )
+
+    for text, expected_problem_type in cases:
+        assert route_text(text).problem_type is expected_problem_type
+
+
 def test_route_ordinary_english_and_chinese_optimization_wording_to_generic_lp_milp():
     from nl2opt.agents.router import route_text
     from nl2opt.schemas import ProblemType

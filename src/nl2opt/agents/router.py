@@ -254,15 +254,6 @@ def route_text(text: str) -> RouterResult:
             reason="clear nonlinear, stochastic, or dynamic optimization wording is unsupported",
         )
 
-    direct_generic_matches = _matched_keywords(normalized, DIRECT_GENERIC_LP_MILP_KEYWORDS)
-    if direct_generic_matches:
-        return RouterResult(
-            problem_type=ProblemType.GENERIC_LP_MILP,
-            confidence=_confidence(float(len(direct_generic_matches)), 0.0, len(direct_generic_matches)),
-            matched_keywords=direct_generic_matches,
-            reason="matched explicit generic LP/MILP wording",
-        )
-
     matches_by_type = {
         problem_type: _matched_keywords(normalized, keywords)
         for problem_type, keywords in KEYWORDS.items()
@@ -273,7 +264,16 @@ def route_text(text: str) -> RouterResult:
         ProblemType.JOBSHOP,
         ProblemType.VRP,
     )
-    if not any(matches_by_type[problem_type] for problem_type in specialized_types):
+    has_specialized_matches = any(matches_by_type[problem_type] for problem_type in specialized_types)
+    if not has_specialized_matches:
+        direct_generic_matches = _matched_keywords(normalized, DIRECT_GENERIC_LP_MILP_KEYWORDS)
+        if direct_generic_matches:
+            return RouterResult(
+                problem_type=ProblemType.GENERIC_LP_MILP,
+                confidence=_confidence(float(len(direct_generic_matches)), 0.0, len(direct_generic_matches)),
+                matched_keywords=direct_generic_matches,
+                reason="matched explicit generic LP/MILP wording",
+            )
         objective_verb_matches = _matched_keywords(normalized, GENERIC_OBJECTIVE_VERB_SIGNALS)
         objective_noun_matches = _matched_keywords(normalized, GENERIC_OBJECTIVE_NOUN_SIGNALS)
         modeling_matches = _matched_keywords(normalized, GENERIC_MODELING_SIGNALS)

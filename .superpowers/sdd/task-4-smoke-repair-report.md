@@ -164,6 +164,49 @@ Result: 52 passed, 3 warnings in 1.06s.
 The warnings are the pre-existing SWIG deprecation warnings from the solver
 stack. No live benchmark or API request was run.
 
+## Specialist precedence follow-up: TDD repair
+
+Review found that the direct generic LP/MILP return was placed before
+specialist-family matching, allowing a trailing "linear program" phrase to
+eclipse a clear production, assignment, jobshop, or VRP statement.
+
+### RED
+
+Command:
+
+~~~
+pytest -q tests/test_router.py tests/test_benchmark.py tests/test_bench_report.py --basetemp .tmp_pytest_basetemp_task4_specialist_precedence_red
+~~~
+
+Result: 1 failed, 54 passed, 3 warnings in 1.06s.
+
+The new four-family regression first failed for a clear production statement:
+the router returned generic_lp_milp solely from "linear program" rather than
+applying specialist scoring.
+
+### GREEN
+
+- Retained nonlinear/stochastic/dynamic rejection as the first nonempty route
+  decision.
+- Compute specialist matches before considering direct LP/MILP keywords.
+- Route direct LP/MILP wording to generic_lp_milp only when no specialized
+  family matches; otherwise keep the established specialist scoring and
+  priority path.
+- Added one regression covering production, assignment, jobshop, and VRP
+  statements that each include "linear program". The existing standalone
+  direct-generic regression remains.
+
+Command:
+
+~~~
+pytest -q tests/test_router.py tests/test_benchmark.py tests/test_bench_report.py --basetemp .tmp_pytest_basetemp_task4_specialist_precedence_green
+~~~
+
+Result: 55 passed, 3 warnings in 1.00s.
+
+The warnings are the pre-existing SWIG deprecation warnings from the solver
+stack. No live benchmark or API request was run.
+
 ## Final router follow-up: TDD repair
 
 The final review found that the multi-signal generic fallback was too strict
