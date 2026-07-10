@@ -76,6 +76,7 @@ _RESULT_FIELDS = (
     "router_problem_type",
     "extractor_provider",
     "extractor_model",
+    "extractor_usage",
     "wall_sec",
     "evaluated_at",
     "error",
@@ -438,12 +439,15 @@ class _RetryingJsonClient:
     def __init__(self, client: _JsonClient, sleep: Callable[[float], None]) -> None:
         self._client = client
         self._sleep = sleep
+        self.last_response: LLMResponse | None = None
 
     def complete_json(self, system_prompt: str, user_prompt: str, temperature: float = 0.0) -> LLMResponse:
-        return call_with_transport_retry(
+        response = call_with_transport_retry(
             lambda: self._client.complete_json(system_prompt, user_prompt, temperature=temperature),
             sleep=self._sleep,
         )
+        self.last_response = response
+        return response
 
 
 def _number_tokens(text: str) -> tuple[str, ...]:
@@ -518,6 +522,7 @@ def _run_default_attempt(
 ) -> BenchmarkAttempt:
     del item, repetition
     route_details: dict[str, Any] = {}
+    extraction_details = route_details
     try:
         route = route_text(text)
         route_details = {
@@ -530,16 +535,18 @@ def _run_default_attempt(
                 error=route.reason,
                 details=route_details,
             )
+        extractor_client = _RetryingJsonClient(client, config.sleep)
         extraction = extract_problem_spec(
             text,
             problem_type=route.problem_type,
-            client=_RetryingJsonClient(client, config.sleep),
+            client=extractor_client,
             prompt_version="v4",
         )
         extraction_details = {
             **route_details,
             "extractor_provider": extraction.provider or "",
             "extractor_model": extraction.model or "",
+            "extractor_usage": extractor_client.last_response.usage if extractor_client.last_response else None,
         }
         if not extraction.success or extraction.spec is None:
             status = "API_ERROR" if _error_is_transport_or_client(extraction.error) else "EXTRACTION_ERROR"
@@ -581,7 +588,7 @@ def _run_default_attempt(
         return BenchmarkAttempt(
             status="API_ERROR" if _is_transport_failure(exc) else "ERROR",
             error=str(exc),
-            details=route_details,
+            details=extraction_details,
         )
 
 
@@ -838,6 +845,7 @@ def _write_failure_artifact(
         "router_reason": _attempt_detail(attempt, "router_reason"),
         "extractor_provider": _attempt_detail(attempt, "extractor_provider"),
         "extractor_model": _attempt_detail(attempt, "extractor_model"),
+        "extractor_usage": attempt.details.get("extractor_usage") if attempt is not None else None,
         "wall_sec": wall_sec,
         "evaluated_at": evaluated_at,
         "error": error,
@@ -1056,6 +1064,9 @@ def run_benchmark(config: BenchmarkRunConfig) -> Path:
                             "router_problem_type": _attempt_detail(attempt, "router_problem_type"),
                             "extractor_provider": _attempt_detail(attempt, "extractor_provider"),
                             "extractor_model": _attempt_detail(attempt, "extractor_model"),
+                            "extractor_usage": _json_cell(
+                                attempt.details.get("extractor_usage") if attempt is not None else None
+                            ),
                             "wall_sec": wall_sec,
                             "evaluated_at": evaluated_at,
                             "error": error or "",

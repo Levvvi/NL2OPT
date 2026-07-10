@@ -20,6 +20,7 @@ from nl2opt.eval.benchmark import (
     load_benchmark_dataset,
     run_benchmark,
 )
+from nl2opt.eval.bench_report import summarize_token_usage
 from nl2opt.eval.run_bench import build_parser
 
 
@@ -251,6 +252,65 @@ def test_runner_records_complete_failure_telemetry_and_utc_manifest_times(tmp_pa
         assert datetime.fromisoformat(manifest[key].removesuffix("Z") + "+00:00").tzinfo is not None
 
 
+def test_runner_serializes_extractor_usage_for_response_backed_failure(tmp_path: Path) -> None:
+    datasets_dir = tmp_path / "datasets"
+    _write_dataset(datasets_dir, rows=_rows())
+    usage = {"prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18}
+
+    results = run_benchmark(
+        BenchmarkRunConfig(
+            datasets_dir=datasets_dir,
+            results_csv=tmp_path / "results.csv",
+            dataset="nl4opt",
+            track="en",
+            repetitions=1,
+            client=MockLLMClient(
+                LLMResponse(
+                    content="{}",
+                    provider="fake-provider",
+                    model="fake-extractor",
+                    usage=usage,
+                )
+            ),
+        )
+    )
+
+    row = next(csv.DictReader(results.open("r", newline="", encoding="utf-8")))
+    assert json.loads(row["extractor_usage"]) == usage
+
+    artifact = json.loads(Path(row["failure_artifact"]).read_text(encoding="utf-8"))
+    assert artifact["extractor_usage"] == usage
+
+
+def test_summarize_token_usage_separates_translation_and_extraction_tokens() -> None:
+    totals = summarize_token_usage(
+        [
+            {
+                "translation_usage": json.dumps(
+                    {"prompt_tokens": 3, "completion_tokens": 5, "total_tokens": 8}
+                ),
+                "extractor_usage": json.dumps(
+                    {"prompt_tokens": 13, "completion_tokens": 17, "total_tokens": 30}
+                ),
+            },
+            {
+                "translation_usage": json.dumps({"prompt_tokens": 2, "total_tokens": 2}),
+                "extractor_usage": "not-json",
+            },
+            {},
+        ]
+    )
+
+    assert totals == {
+        "translation_prompt_tokens": 5,
+        "translation_completion_tokens": 5,
+        "translation_total_tokens": 10,
+        "extractor_prompt_tokens": 13,
+        "extractor_completion_tokens": 17,
+        "extractor_total_tokens": 30,
+    }
+
+
 @pytest.mark.parametrize(
     ("attempt", "ground_truth", "expected_category"),
     [
@@ -346,6 +406,50 @@ def test_pipeline_permission_error_is_classified_as_codegen_error(tmp_path: Path
     assert row["failure_category"] == "CODEGEN_ERR"
 
 
+def test_pipeline_error_preserves_response_backed_extractor_usage(tmp_path: Path, monkeypatch) -> None:
+    datasets_dir = tmp_path / "datasets"
+    _write_dataset(datasets_dir, rows=_rows())
+    usage = {"prompt_tokens": 19, "completion_tokens": 23, "total_tokens": 42}
+    valid_spec = {
+        "problem_id": "generic_schema",
+        "problem_type": "generic_lp_milp",
+        "variables": [{"name": "x", "lb": 0, "ub": 4, "is_integer": False}],
+        "objective": {"sense": "maximize", "name": "value", "terms": [{"var": "x", "coef": 3}]},
+        "constraints": [{"terms": [{"var": "x", "coef": 1}], "op": "<=", "rhs": 4}],
+        "assumptions": [],
+        "missing_fields": [],
+    }
+
+    def denied_pipeline(*_args: object, **_kwargs: object) -> object:
+        raise PermissionError("cannot write solver output")
+
+    monkeypatch.setattr(benchmark_module, "run_problem_spec", denied_pipeline)
+    results = run_benchmark(
+        BenchmarkRunConfig(
+            datasets_dir=datasets_dir,
+            results_csv=tmp_path / "results.csv",
+            dataset="nl4opt",
+            track="en",
+            repetitions=1,
+            client=MockLLMClient(
+                LLMResponse(
+                    content=json.dumps(valid_spec),
+                    provider="fake-provider",
+                    model="fake-extractor",
+                    usage=usage,
+                )
+            ),
+        )
+    )
+
+    row = next(csv.DictReader(results.open("r", newline="", encoding="utf-8")))
+    assert row["status"] == "ERROR"
+    assert json.loads(row["extractor_usage"]) == usage
+
+    artifact = json.loads(Path(row["failure_artifact"]).read_text(encoding="utf-8"))
+    assert artifact["extractor_usage"] == usage
+
+
 def test_runner_saves_full_artifacts_only_for_failures(tmp_path: Path) -> None:
     datasets_dir = tmp_path / "datasets"
     _write_dataset(datasets_dir, rows=_rows(2))
@@ -435,6 +539,7 @@ def test_translation_number_mismatch_blocks_extraction_and_records_failure(tmp_p
     assert row["status"] == "translation_number_mismatch"
     assert row["failure_category"] == "EXTRACT_ERR"
     assert row["translation_model"] == "fake-translator"
+    assert row["extractor_usage"] == ""
     assert calls == 0
     assert len(list((results.parent / "failures").glob("*.json"))) == 1
 

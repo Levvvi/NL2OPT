@@ -8,6 +8,7 @@ translations have completed human review.
 
 from __future__ import annotations
 
+import argparse
 import csv
 import hashlib
 import json
@@ -32,6 +33,30 @@ _REQUIRED_AUDIT_FIELDS = {"dataset", "item_id", "repetition", "numbers_match", "
 _COMPLETE_AUDIT_STATUSES = {"approved", "rejected", "waived"}
 _PUBLIC_AUDIT_FRACTION = 0.10
 _PUBLIC_REPETITIONS = 3
+_USAGE_TOKEN_FIELDS = ("prompt_tokens", "completion_tokens", "total_tokens")
+
+
+def summarize_token_usage(rows: list[dict[str, str]]) -> dict[str, int]:
+    """Sum recorded translation and extraction token usage without external dependencies."""
+
+    totals = {
+        f"{kind}_{token_field}": 0
+        for kind in ("translation", "extractor")
+        for token_field in _USAGE_TOKEN_FIELDS
+    }
+    for row in rows:
+        for kind in ("translation", "extractor"):
+            try:
+                usage = json.loads(row.get(f"{kind}_usage", ""))
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if not isinstance(usage, dict):
+                continue
+            for token_field in _USAGE_TOKEN_FIELDS:
+                value = usage.get(token_field, 0)
+                if isinstance(value, int) and not isinstance(value, bool):
+                    totals[f"{kind}_{token_field}"] += value
+    return totals
 
 
 def wilson_interval(successes: int, total: int, z: float = 1.96) -> tuple[float, float]:
@@ -295,7 +320,57 @@ def _dataset_references(manifest: dict[str, Any]) -> list[str]:
     return lines
 
 
-def render_benchmark_report(results_csv: Path, run_manifest: Path, audit_csv: Path, output: Path) -> Path:
+def _load_validated_run(
+    results_csv: Path,
+    run_manifest: Path,
+    audit_csv: Path,
+) -> tuple[list[dict[str, str]], dict[str, Any], Counter[str]]:
+    result_rows = _read_csv(Path(results_csv), _REQUIRED_RESULT_FIELDS, "benchmark results")
+    manifest = _read_manifest(Path(run_manifest))
+    audit_rows = _read_csv(Path(audit_csv), _REQUIRED_AUDIT_FIELDS, "translation audit")
+    _validate_public_matrix(result_rows, manifest)
+    audit_statuses = _audit_summary(audit_rows)
+    _validate_audit_coverage(result_rows, audit_rows, manifest)
+    return result_rows, manifest, audit_statuses
+
+
+def _validate_retry_comparison_scope(primary_manifest: dict[str, Any], comparison_manifest: dict[str, Any]) -> None:
+    if primary_manifest.get("checker_retry") != "off":
+        raise ValueError("primary retry-ablation run must have checker_retry='off'")
+    if comparison_manifest.get("checker_retry") != "on":
+        raise ValueError("comparison retry-ablation run must have checker_retry='on'")
+    if primary_manifest["selected_item_ids"] != comparison_manifest["selected_item_ids"]:
+        raise ValueError("retry-ablation runs must use matching selected item IDs")
+
+    for dataset in _public_dataset_names(primary_manifest):
+        primary_entry = primary_manifest["datasets"][dataset]
+        comparison_entry = comparison_manifest["datasets"].get(dataset)
+        primary_revision = primary_entry.get("revision") if isinstance(primary_entry, dict) else None
+        comparison_revision = comparison_entry.get("revision") if isinstance(comparison_entry, dict) else None
+        if (
+            not isinstance(primary_revision, str)
+            or not primary_revision
+            or primary_revision != comparison_revision
+        ):
+            raise ValueError("retry-ablation runs must use matching dataset revisions")
+
+
+def _retry_summary_row(mode: str, rows: list[dict[str, str]]) -> tuple[str, str, str, str, str]:
+    successes = _strict_successes(rows)
+    rerun_count = sum(_as_bool(row["checker_retried"], field="checker_retried") for row in rows)
+    return mode, str(successes), str(len(rows)), _rate(successes, len(rows)), str(rerun_count)
+
+
+def render_benchmark_report(
+    results_csv: Path,
+    run_manifest: Path,
+    audit_csv: Path,
+    output: Path,
+    *,
+    comparison_results_csv: Path | None = None,
+    comparison_run_manifest: Path | None = None,
+    comparison_audit_csv: Path | None = None,
+) -> Path:
     """Render an auditable Markdown report after a completed translation audit.
 
     All outcomes remain in denominators. The function writes ``output`` only
@@ -303,12 +378,18 @@ def render_benchmark_report(results_csv: Path, run_manifest: Path, audit_csv: Pa
     cannot accidentally turn a pending translation sample into a public claim.
     """
 
-    result_rows = _read_csv(Path(results_csv), _REQUIRED_RESULT_FIELDS, "benchmark results")
-    manifest = _read_manifest(Path(run_manifest))
-    audit_rows = _read_csv(Path(audit_csv), _REQUIRED_AUDIT_FIELDS, "translation audit")
-    _validate_public_matrix(result_rows, manifest)
-    audit_statuses = _audit_summary(audit_rows)
-    _validate_audit_coverage(result_rows, audit_rows, manifest)
+    result_rows, manifest, audit_statuses = _load_validated_run(results_csv, run_manifest, audit_csv)
+    comparison_paths = (comparison_results_csv, comparison_run_manifest, comparison_audit_csv)
+    if any(path is not None for path in comparison_paths) and not all(path is not None for path in comparison_paths):
+        raise ValueError("retry-ablation comparison requires results CSV, manifest, and audit artifacts")
+    comparison_rows: list[dict[str, str]] | None = None
+    if all(path is not None for path in comparison_paths):
+        comparison_rows, comparison_manifest, _ = _load_validated_run(
+            Path(comparison_results_csv),
+            Path(comparison_run_manifest),
+            Path(comparison_audit_csv),
+        )
+        _validate_retry_comparison_scope(manifest, comparison_manifest)
 
     strict_successes = _strict_successes(result_rows)
     loose_successes = _loose_successes(result_rows)
@@ -317,7 +398,6 @@ def render_benchmark_report(results_csv: Path, run_manifest: Path, audit_csv: Pa
     by_dataset_track: dict[tuple[str, str], list[dict[str, str]]] = defaultdict(list)
     by_repetition: dict[int, list[dict[str, str]]] = defaultdict(list)
     by_industryor: dict[tuple[str, str], list[dict[str, str]]] = defaultdict(list)
-    by_retry_mode: dict[str, list[dict[str, str]]] = defaultdict(list)
     failure_statuses: Counter[str] = Counter()
     for row in result_rows:
         dataset = row["dataset"].strip().lower() or "unlabelled"
@@ -330,8 +410,6 @@ def render_benchmark_report(results_csv: Path, run_manifest: Path, audit_csv: Pa
         if repetition < 1:
             raise ValueError(f"invalid repetition value: {row['repetition']!r}")
         by_repetition[repetition].append(row)
-        retry_mode = row["checker_retry"].strip().lower() or "unlabelled"
-        by_retry_mode[retry_mode].append(row)
         if dataset == "industryor":
             difficulty = _metadata_label(row, "difficulty", "difficulty_label", "unlabelled")
             problem_type = _metadata_label(row, "problem_type", "type", "unlabelled")
@@ -359,21 +437,21 @@ def render_benchmark_report(results_csv: Path, run_manifest: Path, audit_csv: Pa
     if not industryor_rows:
         industryor_rows.append(("not present", "not present", "0", "0", "0.0%"))
 
-    retry_rows = []
-    for mode, rows in sorted(by_retry_mode.items()):
-        successes = _strict_successes(rows)
-        rerun_count = sum(_as_bool(row["checker_retried"], field="checker_retried") for row in rows)
-        retry_rows.append((mode, str(successes), str(len(rows)), _rate(successes, len(rows)), str(rerun_count)))
-
     audit_status_labels = {"approved": "已批准", "rejected": "已拒绝", "waived": "已豁免"}
     audit_summary_text = "，".join(
         f"{audit_status_labels[status]}：{count}" for status, count in sorted(audit_statuses.items())
     )
-    retry_mode_labels = {"on": "开启", "off": "关闭", "unlabelled": "未标注"}
-    retry_rows = [
-        (retry_mode_labels.get(mode, mode), successes, attempts, rate, reruns)
-        for mode, successes, attempts, rate, reruns in retry_rows
-    ]
+    retry_mode_labels = {"on": "开启", "off": "关闭"}
+    if comparison_rows is None:
+        primary_mode = str(manifest["checker_retry"])
+        retry_rows = [_retry_summary_row(retry_mode_labels[primary_mode], result_rows)]
+        retry_notice = "Checker 重试消融尚待完成：未提供配对的关闭和开启完整运行；不声明该消融已运行。"
+    else:
+        retry_rows = [
+            _retry_summary_row(retry_mode_labels["off"], result_rows),
+            _retry_summary_row(retry_mode_labels["on"], comparison_rows),
+        ]
+        retry_notice = "本表基于范围和数据集修订版均匹配的关闭与开启完整运行。"
     lines = [
         "# 公共基准测试报告",
         "",
@@ -421,7 +499,7 @@ def render_benchmark_report(results_csv: Path, run_manifest: Path, audit_csv: Pa
         "",
         "## Checker 重试消融",
         "",
-        "本表仅描述所提供 CSV 中实际出现的重试模式；若没有配对模式，不作因果解释。",
+        retry_notice,
         "",
         *_table(("模式", "严格通过", "尝试次数", "通过率", "Checker 重跑次数"), retry_rows),
         "",
@@ -441,3 +519,40 @@ def render_benchmark_report(results_csv: Path, run_manifest: Path, audit_csv: Pa
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text("\n".join(lines), encoding="utf-8")
     return output
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build the report-rendering CLI parser without making benchmark calls."""
+
+    parser = argparse.ArgumentParser(description="Render an audited NL2OPT benchmark report.")
+    parser.add_argument("--results-csv", type=Path, required=True)
+    parser.add_argument("--run-manifest", type=Path, required=True)
+    parser.add_argument("--audit-csv", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--comparison-results-csv", type=Path)
+    parser.add_argument("--comparison-run-manifest", type=Path)
+    parser.add_argument("--comparison-audit-csv", type=Path)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    try:
+        output = render_benchmark_report(
+            args.results_csv,
+            args.run_manifest,
+            args.audit_csv,
+            args.output,
+            comparison_results_csv=args.comparison_results_csv,
+            comparison_run_manifest=args.comparison_run_manifest,
+            comparison_audit_csv=args.comparison_audit_csv,
+        )
+    except (ValueError, OSError) as exc:
+        print(f"report rendering failed: {exc}")
+        return 1
+    print(output)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

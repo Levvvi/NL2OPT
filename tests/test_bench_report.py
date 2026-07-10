@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from nl2opt.eval.bench_report import build_parser as build_report_parser
 from nl2opt.eval.bench_report import render_benchmark_report, wilson_interval
 
 
@@ -31,7 +32,11 @@ def _write_inputs(
     rows: list[dict[str, object]],
     audit_status: str,
     audit_items: list[tuple[str, str, int]] | None = None,
+    checker_retry: str = "on",
+    selected_item_ids: dict[str, list[str]] | None = None,
 ) -> tuple[Path, Path, Path]:
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    selected_item_ids = selected_item_ids or {"nl4opt": ["n-1"], "industryor": ["i-1"]}
     results = tmp_path / "results.csv"
     with results.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=_RESULT_FIELDS)
@@ -46,7 +51,7 @@ def _write_inputs(
                 "dataset": "all",
                 "track": "all",
                 "repetitions": 3,
-                "checker_retry": "on",
+                "checker_retry": checker_retry,
                 "limit": None,
                 "timeout_sec": 60,
                 "tolerance": 1e-6,
@@ -65,7 +70,7 @@ def _write_inputs(
                         "license": "Apache-2.0",
                     },
                 },
-                "selected_item_ids": {"nl4opt": ["n-1"], "industryor": ["i-1"]},
+                "selected_item_ids": selected_item_ids,
             },
             indent=2,
         ),
@@ -75,7 +80,8 @@ def _write_inputs(
     audit = tmp_path / "translation_audit.csv"
     audit_items = audit_items or [
         (dataset, item_id, repetition)
-        for dataset, item_id in (("nl4opt", "n-1"), ("industryor", "i-1"))
+        for dataset, item_ids in selected_item_ids.items()
+        for item_id in item_ids
         for repetition in range(1, 4)
     ]
     with audit.open("w", newline="", encoding="utf-8") as handle:
@@ -105,10 +111,15 @@ def _write_inputs(
     return results, manifest, audit
 
 
-def _result_rows() -> list[dict[str, object]]:
+def _result_rows(
+    *,
+    checker_retry: str = "on",
+    nl4opt_item_id: str = "n-1",
+    industryor_item_id: str = "i-1",
+) -> list[dict[str, object]]:
     rows = []
     for repetition in range(1, 4):
-        for dataset, item_id in (("nl4opt", "n-1"), ("industryor", "i-1")):
+        for dataset, item_id in (("nl4opt", nl4opt_item_id), ("industryor", industryor_item_id)):
             for track in ("en", "zh"):
                 strict_passed = True
                 loose_passed = True
@@ -120,7 +131,7 @@ def _result_rows() -> list[dict[str, object]]:
                     loose_passed = False
                     status = "EXTRACTION_ERROR"
                     reason = "checker_failed"
-                    checker_retried = True
+                    checker_retried = checker_retry == "on"
                 elif (dataset, track, repetition) == ("industryor", "en", 2):
                     strict_passed = False
                     reason = "objective_mismatch"
@@ -129,7 +140,7 @@ def _result_rows() -> list[dict[str, object]]:
                     "item_id": item_id,
                     "track": track,
                     "repetition": repetition,
-                    "checker_retry": "on",
+                    "checker_retry": checker_retry,
                     "status": status,
                     "passed_1e_6": strict_passed,
                     "passed_1e_4": loose_passed,
@@ -281,6 +292,135 @@ def test_report_renders_audited_dual_track_snapshot(tmp_path: Path) -> None:
     assert "## 文献与数据集来源" in report
     assert "本报告未使用外部基准性能数值" in report
     assert "https://example.test/nl4opt" in report
+
+
+def test_report_renders_two_complete_checker_retry_runs_as_an_ablation(tmp_path: Path) -> None:
+    primary_results, primary_manifest, primary_audit = _write_inputs(
+        tmp_path / "off",
+        rows=_result_rows(checker_retry="off"),
+        audit_status="approved",
+        checker_retry="off",
+    )
+    comparison_results, comparison_manifest, comparison_audit = _write_inputs(
+        tmp_path / "on",
+        rows=_result_rows(checker_retry="on"),
+        audit_status="approved",
+        checker_retry="on",
+    )
+    output = tmp_path / "report.md"
+
+    render_benchmark_report(
+        primary_results,
+        primary_manifest,
+        primary_audit,
+        output,
+        comparison_results_csv=comparison_results,
+        comparison_run_manifest=comparison_manifest,
+        comparison_audit_csv=comparison_audit,
+    )
+
+    report = output.read_text(encoding="utf-8")
+    assert "Checker 重试消融尚待完成" not in report
+    assert "| 关闭 | 10 | 12 | 83.3% | 0 |" in report
+    assert "| 开启 | 10 | 12 | 83.3% | 1 |" in report
+
+
+def test_report_rejects_retry_comparison_with_incompatible_dataset_revision(tmp_path: Path) -> None:
+    primary_results, primary_manifest, primary_audit = _write_inputs(
+        tmp_path / "off",
+        rows=_result_rows(checker_retry="off"),
+        audit_status="approved",
+        checker_retry="off",
+    )
+    comparison_results, comparison_manifest, comparison_audit = _write_inputs(
+        tmp_path / "on",
+        rows=_result_rows(checker_retry="on"),
+        audit_status="approved",
+        checker_retry="on",
+    )
+    comparison_payload = json.loads(comparison_manifest.read_text(encoding="utf-8"))
+    comparison_payload["datasets"]["nl4opt"]["revision"] = "different-revision"
+    comparison_manifest.write_text(json.dumps(comparison_payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="dataset revisions"):
+        render_benchmark_report(
+            primary_results,
+            primary_manifest,
+            primary_audit,
+            tmp_path / "report.md",
+            comparison_results_csv=comparison_results,
+            comparison_run_manifest=comparison_manifest,
+            comparison_audit_csv=comparison_audit,
+        )
+
+
+def test_report_rejects_retry_comparison_with_incompatible_selected_item_scope(tmp_path: Path) -> None:
+    primary_results, primary_manifest, primary_audit = _write_inputs(
+        tmp_path / "off",
+        rows=_result_rows(checker_retry="off"),
+        audit_status="approved",
+        checker_retry="off",
+    )
+    comparison_results, comparison_manifest, comparison_audit = _write_inputs(
+        tmp_path / "on",
+        rows=_result_rows(checker_retry="on", nl4opt_item_id="n-2"),
+        audit_status="approved",
+        checker_retry="on",
+        selected_item_ids={"nl4opt": ["n-2"], "industryor": ["i-1"]},
+    )
+
+    with pytest.raises(ValueError, match="selected item IDs"):
+        render_benchmark_report(
+            primary_results,
+            primary_manifest,
+            primary_audit,
+            tmp_path / "report.md",
+            comparison_results_csv=comparison_results,
+            comparison_run_manifest=comparison_manifest,
+            comparison_audit_csv=comparison_audit,
+        )
+
+
+def test_report_marks_checker_retry_ablation_pending_without_comparison_artifacts(tmp_path: Path) -> None:
+    results, manifest, audit = _write_inputs(tmp_path, rows=_result_rows(), audit_status="approved")
+    output = tmp_path / "report.md"
+
+    render_benchmark_report(results, manifest, audit, output)
+
+    report = output.read_text(encoding="utf-8")
+    assert "Checker 重试消融尚待完成" in report
+    assert "不声明该消融已运行" in report
+
+
+def test_report_cli_accepts_primary_and_optional_comparison_artifacts() -> None:
+    args = build_report_parser().parse_args(
+        [
+            "--results-csv",
+            "off/results.csv",
+            "--run-manifest",
+            "off/run_manifest.json",
+            "--audit-csv",
+            "off/translation_audit.csv",
+            "--output",
+            "report.md",
+            "--comparison-results-csv",
+            "on/results.csv",
+            "--comparison-run-manifest",
+            "on/run_manifest.json",
+            "--comparison-audit-csv",
+            "on/translation_audit.csv",
+        ]
+    )
+
+    assert vars(args) == {
+        "results_csv": Path("off/results.csv"),
+        "run_manifest": Path("off/run_manifest.json"),
+        "audit_csv": Path("off/translation_audit.csv"),
+        "output": Path("report.md"),
+        "comparison_results_csv": Path("on/results.csv"),
+        "comparison_run_manifest": Path("on/run_manifest.json"),
+        "comparison_audit_csv": Path("on/translation_audit.csv"),
+    }
 
 
 def test_claim_registry_leaves_public_metrics_as_a_template() -> None:
