@@ -622,6 +622,197 @@ def test_report_allows_explicit_router_unsupported_without_extractor_metadata(tm
     render_benchmark_report(results, manifest, audit, tmp_path / "report.md")
 
 
+def test_report_keeps_exhausted_extractor_api_failure_without_actual_identity_in_denominator(
+    tmp_path: Path,
+) -> None:
+    rows = _result_rows()
+    rows[0].update(
+        {
+            "status": "API_ERROR",
+            "passed_1e_6": False,
+            "passed_1e_4": False,
+            "failure_category": "API_ERR",
+            "extractor_provider": "",
+            "extractor_model": "",
+            "extractor_usage": "",
+        }
+    )
+    results, manifest, audit = _write_inputs(tmp_path, rows=rows, audit_status="approved")
+    output = tmp_path / "report.md"
+
+    render_benchmark_report(results, manifest, audit, output)
+
+    report = output.read_text(encoding="utf-8")
+    assert "contains 12 attempts" in report
+    assert "| API_ERR | 1 |" in report
+
+
+@pytest.mark.parametrize("status", ("translation_error", "translation_number_mismatch"))
+def test_report_keeps_pre_extraction_translation_failure_without_actual_identity_in_denominator(
+    tmp_path: Path, status: str
+) -> None:
+    rows = _result_rows()
+    rows[0].update(
+        {
+            "status": status,
+            "passed_1e_6": False,
+            "passed_1e_4": False,
+            "failure_category": "EXTRACT_ERR",
+            "extractor_provider": "",
+            "extractor_model": "",
+            "extractor_usage": "",
+        }
+    )
+    results, manifest, audit = _write_inputs(tmp_path, rows=rows, audit_status="approved")
+    output = tmp_path / "report.md"
+
+    render_benchmark_report(results, manifest, audit, output)
+
+    report = output.read_text(encoding="utf-8")
+    assert "contains 12 attempts" in report
+    assert "| EXTRACT_ERR | 2 |" in report
+
+
+@pytest.mark.parametrize(
+    ("status", "failure_category", "router_problem_type"),
+    (
+        ("UNSUPPORTED", "UNSUPPORTED", "unsupported"),
+        ("API_ERROR", "API_ERR", "generic_lp_milp"),
+        ("translation_error", "EXTRACT_ERR", "generic_lp_milp"),
+        ("translation_number_mismatch", "EXTRACT_ERR", "generic_lp_milp"),
+    ),
+)
+@pytest.mark.parametrize(
+    ("provider", "model"),
+    (("deepseek", ""), ("", "deepseek-v4-flash")),
+)
+def test_report_rejects_partial_actual_identity_on_every_unavailable_identity_path(
+    tmp_path: Path,
+    status: str,
+    failure_category: str,
+    router_problem_type: str,
+    provider: str,
+    model: str,
+) -> None:
+    rows = _result_rows()
+    rows[0].update(
+        {
+            "status": status,
+            "passed_1e_6": False,
+            "passed_1e_4": False,
+            "failure_category": failure_category,
+            "router_problem_type": router_problem_type,
+            "extractor_provider": provider,
+            "extractor_model": model,
+        }
+    )
+    results, manifest, audit = _write_inputs(tmp_path, rows=rows, audit_status="approved")
+
+    with pytest.raises(ValueError, match="provider/model pairs"):
+        render_benchmark_report(results, manifest, audit, tmp_path / "report.md")
+
+
+@pytest.mark.parametrize(
+    ("status", "failure_category"),
+    (("OPTIMAL", ""), ("EXTRACTION_ERROR", "EXTRACT_ERR"), ("SOLVE_TIMEOUT", "SOLVE_TIMEOUT")),
+)
+def test_report_rejects_blank_actual_identity_after_extraction_or_downstream_processing(
+    tmp_path: Path, status: str, failure_category: str
+) -> None:
+    rows = _result_rows()
+    rows[0].update(
+        {
+            "status": status,
+            "passed_1e_6": status == "OPTIMAL",
+            "passed_1e_4": status == "OPTIMAL",
+            "failure_category": failure_category,
+            "extractor_provider": "",
+            "extractor_model": "",
+        }
+    )
+    results, manifest, audit = _write_inputs(tmp_path, rows=rows, audit_status="approved")
+
+    with pytest.raises(ValueError, match="actual extractor"):
+        render_benchmark_report(results, manifest, audit, tmp_path / "report.md")
+
+
+def test_report_provenance_discloses_exact_unavailable_actual_identity_count(tmp_path: Path) -> None:
+    rows = _result_rows()
+    for row, status, failure_category in (
+        (rows[0], "API_ERROR", "API_ERR"),
+        (rows[1], "translation_error", "EXTRACT_ERR"),
+        (rows[2], "translation_number_mismatch", "EXTRACT_ERR"),
+    ):
+        row.update(
+            {
+                "status": status,
+                "passed_1e_6": False,
+                "passed_1e_4": False,
+                "failure_category": failure_category,
+                "extractor_provider": "",
+                "extractor_model": "",
+                "extractor_usage": "",
+            }
+        )
+    results, manifest, audit = _write_inputs(tmp_path, rows=rows, audit_status="approved")
+    output = tmp_path / "report.md"
+
+    render_benchmark_report(results, manifest, audit, output)
+
+    report = output.read_text(encoding="utf-8")
+    assert "- Actual extractor identity unavailable (no usable extractor response): `3` rows" in report
+    assert "- Actual extractor provider/model set: `deepseek/deepseek-v4-flash`" in report
+    assert "- Requested model: `deepseek-v4-flash`" in report
+
+
+def test_report_retry_comparison_accepts_different_legitimate_unavailable_identity_counts(
+    tmp_path: Path,
+) -> None:
+    primary_rows = _result_rows(checker_retry="off")
+    primary_rows[0].update(
+        {
+            "status": "API_ERROR",
+            "passed_1e_6": False,
+            "passed_1e_4": False,
+            "failure_category": "API_ERR",
+            "extractor_provider": "",
+            "extractor_model": "",
+        }
+    )
+    primary_results, primary_manifest, primary_audit = _write_inputs(
+        tmp_path / "off", rows=primary_rows, audit_status="approved", checker_retry="off"
+    )
+    comparison_rows = _result_rows(checker_retry="on")
+    for row in comparison_rows[:2]:
+        row.update(
+            {
+                "status": "translation_error",
+                "passed_1e_6": False,
+                "passed_1e_4": False,
+                "failure_category": "EXTRACT_ERR",
+                "extractor_provider": "",
+                "extractor_model": "",
+            }
+        )
+    comparison_results, comparison_manifest, comparison_audit = _write_inputs(
+        tmp_path / "on", rows=comparison_rows, audit_status="approved", checker_retry="on"
+    )
+    output = tmp_path / "report.md"
+
+    render_benchmark_report(
+        primary_results,
+        primary_manifest,
+        primary_audit,
+        output,
+        comparison_results_csv=comparison_results,
+        comparison_run_manifest=comparison_manifest,
+        comparison_audit_csv=comparison_audit,
+    )
+
+    report = output.read_text(encoding="utf-8")
+    assert "- Actual extractor identity unavailable (no usable extractor response): `1` rows" in report
+
+
 def test_report_rejects_comparison_blank_actual_metadata_after_extraction(tmp_path: Path) -> None:
     primary_results, primary_manifest, primary_audit = _write_inputs(
         tmp_path / "off", rows=_result_rows(checker_retry="off"), audit_status="approved", checker_retry="off"

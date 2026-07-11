@@ -212,17 +212,20 @@ def _dataset_identity(entry: Any, *, dataset: str) -> tuple[object, ...]:
     return tuple(values)
 
 
-def _actual_extractor_identities(result_rows: list[dict[str, str]]) -> set[tuple[str, str]]:
-    """Return every recorded provider/model pair without inventing a default."""
+def _actual_extractor_identity_summary(
+    result_rows: list[dict[str, str]],
+) -> tuple[set[tuple[str, str]], int]:
+    """Return recorded identities and the count unavailable before extraction."""
 
     identities: set[tuple[str, str]] = set()
+    unavailable_count = 0
     for row in result_rows:
         provider = row["extractor_provider"].strip()
         model = row["extractor_model"].strip()
         router_problem_type = row["router_problem_type"].strip().lower()
         status = row["status"].strip().upper()
         strict_passed = _as_bool(row["passed_1e_6"], field="passed_1e_6")
-        failure_category = row["failure_category"].strip()
+        failure_category = row["failure_category"].strip().upper()
         if not strict_passed and not failure_category:
             raise ValueError("public reports require failure_category for every strict failure")
         if bool(provider) != bool(model):
@@ -230,14 +233,21 @@ def _actual_extractor_identities(result_rows: list[dict[str, str]]) -> set[tuple
         if provider:
             identities.add((provider, model))
             continue
-        if router_problem_type == "unsupported" and status == "UNSUPPORTED":
+        unavailable_before_extraction = not strict_passed and (
+            (router_problem_type == "unsupported" and status == "UNSUPPORTED" and failure_category == "UNSUPPORTED")
+            or (status == "API_ERROR" and failure_category == "API_ERR")
+            or (
+                status in {"TRANSLATION_ERROR", "TRANSLATION_NUMBER_MISMATCH"}
+                and failure_category == "EXTRACT_ERR"
+            )
+        )
+        if unavailable_before_extraction:
+            unavailable_count += 1
             continue
         if router_problem_type:
             raise ValueError("actual extractor metadata is blank after extraction")
         raise ValueError("actual extractor metadata is blank without an explicit unsupported router result")
-    if not identities:
-        raise ValueError("public reports require non-empty actual extractor metadata")
-    return identities
+    return identities, unavailable_count
 
 
 def _usage_summary_text(result_rows: list[dict[str, str]]) -> tuple[str, str]:
@@ -436,7 +446,7 @@ def _load_validated_run(
     manifest = _read_manifest(Path(run_manifest))
     audit_rows = _read_csv(Path(audit_csv), _REQUIRED_AUDIT_FIELDS, "translation audit")
     _validate_public_matrix(result_rows, manifest)
-    _actual_extractor_identities(result_rows)
+    _actual_extractor_identity_summary(result_rows)
     audit_statuses = _audit_summary(audit_rows)
     _validate_audit_coverage(result_rows, audit_rows, manifest)
     return result_rows, manifest, audit_statuses
@@ -471,7 +481,9 @@ def _validate_retry_comparison_scope(
                 raise ValueError("retry-ablation runs must use matching dataset revisions")
             raise ValueError("retry-ablation runs must use matching pinned dataset descriptors")
 
-    if _actual_extractor_identities(primary_rows) != _actual_extractor_identities(comparison_rows):
+    primary_identities, _ = _actual_extractor_identity_summary(primary_rows)
+    comparison_identities, _ = _actual_extractor_identity_summary(comparison_rows)
+    if primary_identities != comparison_identities:
         raise ValueError("retry-ablation runs must use matching actual extractor provider/model sets")
 
 
@@ -557,7 +569,7 @@ def render_benchmark_report(
     if not industryor_rows:
         industryor_rows.append(("not present", "not present", "0", "0", "0.0%"))
 
-    actual_extractor_identities = _actual_extractor_identities(result_rows)
+    actual_extractor_identities, unavailable_extractor_identity_count = _actual_extractor_identity_summary(result_rows)
     translation_usage_text, extractor_usage_text = _usage_summary_text(result_rows)
     failure_statuses = failure_categories
 
@@ -590,7 +602,12 @@ def render_benchmark_report(
         f"- Completed: `{_recorded_time(manifest, 'completed_at')}`",
         f"- Requested model: `{manifest['requested_model']}`",
         "- Actual extractor provider/model set: "
-        + ", ".join(f"`{provider}/{model}`" for provider, model in sorted(actual_extractor_identities)),
+        + (
+            ", ".join(f"`{provider}/{model}`" for provider, model in sorted(actual_extractor_identities))
+            or "none observed"
+        ),
+        "- Actual extractor identity unavailable (no usable extractor response): "
+        f"`{unavailable_extractor_identity_count}` rows",
         f"- Token totals: {translation_usage_text}; {extractor_usage_text}",
         "",
         "## 中文执行摘要",
