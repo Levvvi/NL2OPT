@@ -43,7 +43,7 @@ The renderer also rejects smoke or partial artifacts. A renderable public run
 must use both tracks, three repetitions, the fixed 10% audit fraction, no
 `--limit`, and a complete row for every pinned item/track/repetition key.
 
-NL2OPT 是一个面试级 MVP，用来验证“中文业务问题 -> 结构化优化模型 -> OR-Tools 求解 -> 独立校验 -> 评测报告”的闭环。用户可以输入中文生产计划、任务分配、作业车间排产或车辆路径配送问题，系统先用 Router 判断问题类型，再用 DeepSeek 抽取结构化 `ProblemSpec`。求解阶段不让 LLM 自由写 OR-Tools 代码，而是使用受控 Jinja2 模板生成模型代码并本地运行。求解结果会经过独立 checker 复核约束和目标值，并输出 pipeline/eval 报告和确定性中文解释。
+NL2OPT 是一个初级 MVP，用来验证“中文业务问题 -> 结构化优化模型 -> OR-Tools 求解 -> 独立校验 -> 评测报告”的闭环。用户可以输入中文生产计划、任务分配、作业车间排产或车辆路径配送问题，系统先用 Router 判断问题类型，再用 DeepSeek 抽取结构化 `ProblemSpec`。求解阶段不让 LLM 自由写 OR-Tools 代码，而是使用受控 Jinja2 模板生成模型代码并本地运行。求解结果会经过独立 checker 复核约束和目标值，并输出 pipeline/eval 报告和确定性中文解释。
 
 ## 核心亮点
 
@@ -209,7 +209,7 @@ labor 总容量 100，material 总容量 80。产品数量为非负整数，目�
 
 ## 项目边界
 
-- 这是面试级 MVP，不是工业级通用优化平台。
+- 这是初级 MVP，不是工业级通用优化平台。
 - 当前支持四类小规模专用问题（production、assignment、jobshop、vrp）以及 `generic_lp_milp` 的 strictly linear LP/IP/MIP；连续模型使用 GLOP，含整数变量使用 SCIP。
 - nonlinear, stochastic, dynamic, and otherwise unsupported formulations are refused rather than silently modeled；不支持将任意自然语言优化问题静默自动建模。
 - 不开放公网执行任意代码。
@@ -225,7 +225,5 @@ labor 总容量 100，material 总容量 80。产品数量为非负整数，目�
 - Jinja2
 - pytest
 - Streamlit：local demo
-
-## 面试讲解 5 句话
 
 NL2OPT 解决的是自然语言业务描述到可求解优化模型之间的落差。我的做法是 schema-first：先把中文问题抽取成受 Pydantic 校验的 `ProblemSpec`，再用 OR-Tools 模板化求解。LLM 只负责抽取实体、参数、目标和约束，不直接生成任意求解代码。求解后由 checker 独立复核约束和目标值，避免“代码跑了但结果不可信”。在自建 20 题中文评测集上，真实 DeepSeek v3 live eval 端到端通过率为 20/20。
