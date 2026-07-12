@@ -1,0 +1,7 @@
+# Published benchmark hashes describe the exact LF bytes produced by the
+# exporter. Disable checkout conversion so they remain portable.
+reports/artifacts/** -text
+
+# Multiline source questions can legitimately preserve upstream spaces before
+# embedded newlines; do not flag those audited CSV bytes as patch whitespace.
+reports/artifacts/*/translation_audit.csv whitespace=-blank-at-eol

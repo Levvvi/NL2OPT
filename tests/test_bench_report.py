@@ -923,10 +923,14 @@ def test_readme_declares_strict_generic_lp_milp_support_and_refusal_boundary() -
     assert "not a public-benchmark result" in content
 
 
-def test_claim_registry_leaves_public_metrics_as_a_template() -> None:
+def test_claim_registry_publishes_audited_metrics_with_causal_caveat() -> None:
     registry = Path(__file__).parents[1] / "docs" / "claim_registry.md"
     content = registry.read_text(encoding="utf-8")
 
-    assert "Public benchmark result (pending audited run)" in content
+    assert "1,098/2,070" in content
+    assert "1,083/2,070" in content
+    assert "0.7 percentage points lower" in content
+    assert "not a paired causal estimate" in content
+    assert "reports/artifacts/" in content
     assert "NL4Opt/IndustryOR" in content
-    assert "Do not replace this template" in content
+    assert "self-built 20/20 result" in content

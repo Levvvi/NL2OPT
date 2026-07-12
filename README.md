@@ -17,18 +17,27 @@ Resume an interrupted command by repeating it with `--resume`.
 
 ### Publication gate
 
-This repository does not state an NL4Opt or IndustryOR success rate before a
-completed real run and human completion of the deterministic Chinese
-translation audit. The public renderer derives every aggregate from the
-recorded CSV and refuses pending or number-mismatched audit rows:
+The public renderer derives every aggregate from recorded CSV artifacts and
+refuses incomplete audit decisions. Deterministic translation rows with an
+Arabic-number mismatch are publishable only after a human marks them rejected:
 
 ```bash
 python -c "from pathlib import Path; from nl2opt.eval.bench_report import render_benchmark_report; render_benchmark_report(Path('eval/results/<run-id>/results.csv'), Path('eval/results/<run-id>/run_manifest.json'), Path('eval/results/<run-id>/translation_audit.csv'), Path('reports/bench_report.md'))"
 ```
 
-`reports/bench_report.md` is therefore absent until that gate has succeeded.
-The existing 20/20 result below is a separate, self-built Chinese evaluation;
-it is not a public-benchmark result.
+The publication gate has succeeded for two complete, independently executed
+runs. In the retry-off run, NL2OPT passed 1,098/2,070 attempts at both 1e-6 and
+1e-4 (53.0%); its 105 audited translations include 93 approved and 12 rejected
+decisions. The retry-on rerun passed 1,083/2,070 (52.3%), recorded 412 checker
+retries, and includes 95 approved and 10 rejected audits. The 0.7 percentage
+point lower retry-on result is descriptive, not a paired causal estimate, and
+does not show that checker retry improved accuracy.
+
+See the [formal benchmark report](reports/bench_report.md) for tables and
+limitations and the [sanitized artifact package](reports/artifacts/README.md)
+for reproducible CSVs, manifests, audit decisions, hashes, and sanitization
+details. The existing 20/20 result below remains a separate, self-built Chinese
+evaluation; it is not a public-benchmark result.
 
 The renderer also rejects smoke or partial artifacts. A renderable public run
 must use both tracks, three repetitions, the fixed 10% audit fraction, no
