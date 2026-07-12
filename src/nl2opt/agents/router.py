@@ -89,6 +89,86 @@ KEYWORDS: dict[ProblemType, list[str]] = {
 }
 
 
+DIRECT_GENERIC_LP_MILP_KEYWORDS = [
+    "linear programming",
+    "linear program",
+    "integer programming",
+    "mixed integer",
+    "milp",
+    "线性规划",
+    "整数规划",
+    "混合整数",
+    "混合整数规划",
+]
+
+KEYWORDS[ProblemType.GENERIC_LP_MILP] = [
+    *DIRECT_GENERIC_LP_MILP_KEYWORDS,
+    "decision variable",
+    "decision variables",
+    "linear constraint",
+    "linear constraints",
+    "subject to",
+    "决策变量",
+    "线性约束",
+]
+
+REJECTION_KEYWORDS = [
+    "nonlinear",
+    "quadratic",
+    "stochastic",
+    "random demand",
+    "dynamic optimization",
+    "非线性",
+    "二次",
+    "随机",
+    "不确定",
+    "动态优化",
+]
+
+GENERIC_OBJECTIVE_VERB_SIGNALS = [
+    "minimize",
+    "maximize",
+    "最小化",
+    "最大化",
+]
+
+GENERIC_OBJECTIVE_NOUN_SIGNALS = [
+    "objective",
+    "profit",
+    "cost",
+    "目标",
+    "利润",
+    "成本",
+]
+
+GENERIC_MODELING_SIGNALS = [
+    "linear programming",
+    "integer programming",
+    "mixed integer",
+    "milp",
+    "decision variable",
+    "linear constraint",
+    "线性规划",
+    "整数规划",
+    "混合整数",
+    "决策变量",
+    "线性约束",
+]
+
+GENERIC_CONSTRAINT_SIGNALS = [
+    "at most",
+    "at least",
+    "subject to",
+    "constraint",
+    "至多",
+    "至少",
+    "约束",
+    "满足以下约束",
+    "不超过",
+    "不少于",
+]
+
+
 def _matched_keywords(text: str, keywords: list[str]) -> list[str]:
     lowered = text.lower()
     return [keyword for keyword in keywords if keyword.lower() in lowered]
@@ -126,6 +206,22 @@ def _score(text: str, problem_type: ProblemType, matches: list[str]) -> float:
         if sum(1 for term in priority_terms if term in text) >= 2:
             score += 1.0
 
+    elif problem_type is ProblemType.GENERIC_LP_MILP:
+        priority_terms = [
+            "linear",
+            "integer",
+            "milp",
+            "decision variable",
+            "subject to",
+            "线性规划",
+            "整数规划",
+            "混合整数",
+            "决策变量",
+            "线性约束",
+        ]
+        if sum(1 for term in priority_terms if term in text.lower()) >= 2:
+            score += 1.0
+
     return score
 
 
@@ -149,10 +245,67 @@ def route_text(text: str) -> RouterResult:
             reason="输入为空，无法判断问题类型",
         )
 
+    rejected_keywords = _matched_keywords(normalized, REJECTION_KEYWORDS)
+    if rejected_keywords:
+        return RouterResult(
+            problem_type=ProblemType.UNSUPPORTED,
+            confidence=0.95,
+            matched_keywords=rejected_keywords,
+            reason="clear nonlinear, stochastic, or dynamic optimization wording is unsupported",
+        )
+
     matches_by_type = {
         problem_type: _matched_keywords(normalized, keywords)
         for problem_type, keywords in KEYWORDS.items()
     }
+    specialized_types = (
+        ProblemType.PRODUCTION,
+        ProblemType.ASSIGNMENT,
+        ProblemType.JOBSHOP,
+        ProblemType.VRP,
+    )
+    has_specialized_matches = any(matches_by_type[problem_type] for problem_type in specialized_types)
+    if not has_specialized_matches:
+        direct_generic_matches = _matched_keywords(normalized, DIRECT_GENERIC_LP_MILP_KEYWORDS)
+        if direct_generic_matches:
+            return RouterResult(
+                problem_type=ProblemType.GENERIC_LP_MILP,
+                confidence=_confidence(float(len(direct_generic_matches)), 0.0, len(direct_generic_matches)),
+                matched_keywords=direct_generic_matches,
+                reason="matched explicit generic LP/MILP wording",
+            )
+        objective_verb_matches = _matched_keywords(normalized, GENERIC_OBJECTIVE_VERB_SIGNALS)
+        objective_noun_matches = _matched_keywords(normalized, GENERIC_OBJECTIVE_NOUN_SIGNALS)
+        modeling_matches = _matched_keywords(normalized, GENERIC_MODELING_SIGNALS)
+        constraint_matches = _matched_keywords(normalized, GENERIC_CONSTRAINT_SIGNALS)
+        generic_matches = list(
+            dict.fromkeys(
+                [
+                    *matches_by_type[ProblemType.GENERIC_LP_MILP],
+                    *objective_verb_matches,
+                    *objective_noun_matches,
+                    *modeling_matches,
+                    *constraint_matches,
+                ]
+            )
+        )
+        noun_with_modeling_structure = bool(
+            objective_noun_matches and modeling_matches and constraint_matches
+        )
+        if objective_verb_matches or len(modeling_matches) >= 2 or noun_with_modeling_structure:
+            return RouterResult(
+                problem_type=ProblemType.GENERIC_LP_MILP,
+                confidence=_confidence(float(len(generic_matches)), 0.0, len(generic_matches)),
+                matched_keywords=generic_matches,
+                reason="matched generic optimization objective or modeling wording",
+            )
+        if generic_matches:
+            return RouterResult(
+                problem_type=ProblemType.UNSUPPORTED,
+                confidence=0.0,
+                matched_keywords=generic_matches,
+                reason="generic routing requires an objective verb or multiple modeling signals",
+            )
     if not any(matches_by_type.values()):
         return RouterResult(
             problem_type=ProblemType.UNSUPPORTED,
@@ -161,15 +314,18 @@ def route_text(text: str) -> RouterResult:
             reason="未命中 production、assignment、jobshop、vrp 的明显关键词",
         )
 
+    candidate_types = specialized_types if has_specialized_matches else tuple(matches_by_type)
     scores = {
         problem_type: _score(normalized, problem_type, matches)
         for problem_type, matches in matches_by_type.items()
+        if problem_type in candidate_types
     }
     priority = [
         ProblemType.VRP,
         ProblemType.JOBSHOP,
         ProblemType.ASSIGNMENT,
         ProblemType.PRODUCTION,
+        ProblemType.GENERIC_LP_MILP,
     ]
     ordered = sorted(
         scores,

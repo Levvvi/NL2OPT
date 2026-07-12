@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from nl2opt.agents.llm_client import DeepSeekClient, LLMClient, MockLLMClient
 from nl2opt.agents.normalizer import normalize_spec_dict
@@ -15,9 +15,11 @@ from nl2opt.agents.prompts import build_extractor_prompt
 from nl2opt.agents.router import route_text
 from nl2opt.schemas import (
     AssignmentProblemSpec,
+    GenericLpSpec,
     JobshopProblemSpec,
     ProblemType,
     ProductionProblemSpec,
+    UnsupportedProblemSpec,
     VrpProblemSpec,
 )
 
@@ -79,12 +81,18 @@ def _coerce_problem_type(problem_type: ProblemType | str) -> ProblemType:
     return ProblemType(str(problem_type))
 
 
+def _problem_type_value(spec: Any, fallback: ProblemType) -> str:
+    problem_type = getattr(spec, "problem_type", fallback)
+    return problem_type.value if isinstance(problem_type, ProblemType) else str(problem_type)
+
+
 def get_schema_model_for_problem_type(problem_type: ProblemType) -> type[BaseModel]:
     schema_by_type: dict[ProblemType, type[BaseModel]] = {
         ProblemType.PRODUCTION: ProductionProblemSpec,
         ProblemType.ASSIGNMENT: AssignmentProblemSpec,
         ProblemType.JOBSHOP: JobshopProblemSpec,
         ProblemType.VRP: VrpProblemSpec,
+        ProblemType.GENERIC_LP_MILP: GenericLpSpec,
     }
     schema_model = schema_by_type.get(problem_type)
     if schema_model is None:
@@ -112,8 +120,20 @@ def validate_spec_dict(
     problem_type: ProblemType,
     data: dict[str, Any],
 ) -> Any:
+    normalized = normalize_spec_dict(problem_type, data)
+    if (
+        problem_type is ProblemType.GENERIC_LP_MILP
+        and normalized.get("problem_type") == ProblemType.UNSUPPORTED.value
+    ):
+        return UnsupportedProblemSpec.model_validate(normalized)
     schema_model = get_schema_model_for_problem_type(problem_type)
-    return schema_model.model_validate(normalize_spec_dict(problem_type, data))
+    return schema_model.model_validate(normalized)
+
+
+def get_schema_json_for_problem_type(problem_type: ProblemType) -> dict[str, Any]:
+    if problem_type is ProblemType.GENERIC_LP_MILP:
+        return TypeAdapter(GenericLpSpec | UnsupportedProblemSpec).json_schema()
+    return get_schema_model_for_problem_type(problem_type).model_json_schema()
 
 
 def _format_validation_errors(exc: ValidationError) -> list[str]:
@@ -148,7 +168,7 @@ def extract_problem_spec(
         return _empty_result(
             text=text,
             problem_type=ProblemType.UNSUPPORTED.value,
-            error="unsupported problem_type; extractor only supports production, assignment, jobshop, and vrp",
+            error="unsupported problem_type; extractor only supports production, assignment, jobshop, vrp, and generic_lp_milp",
             prompt_version=prompt_version,
         )
 
@@ -165,7 +185,7 @@ def extract_problem_spec(
     system_prompt, user_prompt = build_extractor_prompt(
         text,
         resolved_type,
-        schema_model.model_json_schema(),
+        get_schema_json_for_problem_type(resolved_type),
         prompt_version=prompt_version,
     )
 
@@ -224,7 +244,7 @@ def extract_problem_spec(
 
     return ExtractorResult(
         text=text,
-        problem_type=resolved_type.value,
+        problem_type=_problem_type_value(spec, resolved_type),
         success=True,
         spec=spec,
         spec_dict=spec.model_dump(mode="json"),

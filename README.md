@@ -1,5 +1,48 @@
 # NL2OPT: 中文自然语言到优化模型的 Agent
 
+## Public benchmark runner
+
+The repository includes revision-pinned NL4Opt and IndustryOR inputs under
+`eval/datasets/`. A benchmark run records each attempt in a resumable CSV; it
+does not publish aggregate results automatically. Configure `DEEPSEEK_API_KEY`
+outside the repository, then run a bounded smoke command such as:
+
+```bash
+python -m nl2opt.eval.run_bench --dataset all --track all --repetitions 1 --checker-retry off --limit 5 --timeout-sec 60 --run-id smoke-local
+```
+
+Rows, the run manifest, the deterministic Chinese translation audit sample,
+and failure-only artifacts are written beneath `eval/results/<run-id>/`.
+Resume an interrupted command by repeating it with `--resume`.
+
+### Publication gate
+
+The public renderer derives every aggregate from recorded CSV artifacts and
+refuses incomplete audit decisions. Deterministic translation rows with an
+Arabic-number mismatch are publishable only after a human marks them rejected:
+
+```bash
+python -c "from pathlib import Path; from nl2opt.eval.bench_report import render_benchmark_report; render_benchmark_report(Path('eval/results/<run-id>/results.csv'), Path('eval/results/<run-id>/run_manifest.json'), Path('eval/results/<run-id>/translation_audit.csv'), Path('reports/bench_report.md'))"
+```
+
+The publication gate has succeeded for two complete, independently executed
+runs. In the retry-off run, NL2OPT passed 1,098/2,070 attempts at both 1e-6 and
+1e-4 (53.0%); its 105 audited translations include 93 approved and 12 rejected
+decisions. The retry-on rerun passed 1,083/2,070 (52.3%), recorded 412 checker
+retries, and includes 95 approved and 10 rejected audits. The 0.7 percentage
+point lower retry-on result is descriptive, not a paired causal estimate, and
+does not show that checker retry improved accuracy.
+
+See the [formal benchmark report](reports/bench_report.md) for tables and
+limitations and the [sanitized artifact package](reports/artifacts/README.md)
+for reproducible CSVs, manifests, audit decisions, hashes, and sanitization
+details. The existing 20/20 result below remains a separate, self-built Chinese
+evaluation; it is not a public-benchmark result.
+
+The renderer also rejects smoke or partial artifacts. A renderable public run
+must use both tracks, three repetitions, the fixed 10% audit fraction, no
+`--limit`, and a complete row for every pinned item/track/repetition key.
+
 NL2OPT 是一个初级 MVP，用来验证“中文业务问题 -> 结构化优化模型 -> OR-Tools 求解 -> 独立校验 -> 评测报告”的闭环。用户可以输入中文生产计划、任务分配、作业车间排产或车辆路径配送问题，系统先用 Router 判断问题类型，再用 DeepSeek 抽取结构化 `ProblemSpec`。求解阶段不让 LLM 自由写 OR-Tools 代码，而是使用受控 Jinja2 模板生成模型代码并本地运行。求解结果会经过独立 checker 复核约束和目标值，并输出 pipeline/eval 报告和确定性中文解释。
 
 ## 核心亮点
@@ -17,6 +60,7 @@ NL2OPT 是一个初级 MVP，用来验证“中文业务问题 -> 结构化优�
 | `assignment` | 任务分配 | OR-Tools linear solver |
 | `jobshop` | 作业车间排产 | OR-Tools CP-SAT |
 | `vrp` | 车辆路径配送 CVRP | OR-Tools RoutingModel |
+| `generic_lp_milp` | 严格线性 LP/IP/MIP | 连续模型使用 GLOP；含整数变量使用 SCIP |
 
 ## 系统架构
 
@@ -165,9 +209,9 @@ labor 总容量 100，material 总容量 80。产品数量为非负整数，目�
 
 ## 项目边界
 
-- 这是初级级 MVP，不是工业级通用优化平台。
-- 当前只支持四类小规模问题：production、assignment、jobshop、vrp。
-- 不支持任意自然语言优化问题自动建模。
+- 这是初级 MVP，不是工业级通用优化平台。
+- 当前支持四类小规模专用问题（production、assignment、jobshop、vrp）以及 `generic_lp_milp` 的 strictly linear LP/IP/MIP；连续模型使用 GLOP，含整数变量使用 SCIP。
+- nonlinear, stochastic, dynamic, and otherwise unsupported formulations are refused rather than silently modeled；不支持将任意自然语言优化问题静默自动建模。
 - 不开放公网执行任意代码。
 - 当前 runner 是本地 subprocess，不是 Docker 沙箱；复杂安全防护不是本阶段重点。
 - 当前 Streamlit UI 只用于本地演示，不包含登录、数据库、云部署或多用户权限系统。

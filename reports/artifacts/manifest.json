@@ -1,0 +1,68 @@
+{
+  "package_files": {
+    "README.md": {
+      "sha256": "b040a19e1449620cd981a7344ace8e680fd825c8b0fe18b16cf6b4c7ab8ba508"
+    }
+  },
+  "runs": [
+    {
+      "audit_rows": 105,
+      "audit_status_counts": {
+        "approved": 93,
+        "rejected": 12,
+        "waived": 0
+      },
+      "checker_retry": "off",
+      "checker_retry_count": 0,
+      "files": {
+        "results.csv": {
+          "row_count": 2070,
+          "sha256": "1b2e8333f5382e58269417fc8bb41747a12f7cb9a4acb235e3e3fad36d47be0c"
+        },
+        "run_manifest.json": {
+          "sha256": "1e2ca90a7b43d6e14278053ce7c7a95c36fba923fc9176101e6f6e99fa898d16"
+        },
+        "translation_audit.csv": {
+          "row_count": 105,
+          "sha256": "809359642586298415d2160a3831b520fbc2568b6c6e786430a28a076858bad5"
+        }
+      },
+      "loose_passes": 1098,
+      "loose_rate": 0.5304347826086957,
+      "result_rows": 2070,
+      "run_id": "public-20260710-off",
+      "strict_passes": 1098,
+      "strict_rate": 0.5304347826086957
+    },
+    {
+      "audit_rows": 105,
+      "audit_status_counts": {
+        "approved": 95,
+        "rejected": 10,
+        "waived": 0
+      },
+      "checker_retry": "on",
+      "checker_retry_count": 412,
+      "files": {
+        "results.csv": {
+          "row_count": 2070,
+          "sha256": "c63157acae80c0323963a3a96681e24278bd9e3869a5eac9619b3e0c608e6902"
+        },
+        "run_manifest.json": {
+          "sha256": "dabbddcdd667ea47adbc623daf9f5659e8085671e139366a9bba4358a57db220"
+        },
+        "translation_audit.csv": {
+          "row_count": 105,
+          "sha256": "fa7661a52a95562f922c047ce66b25cc5fc1fc8b7c996dc50eb10f14c63405ae"
+        }
+      },
+      "loose_passes": 1083,
+      "loose_rate": 0.5231884057971015,
+      "result_rows": 2070,
+      "run_id": "public-20260711-on-rerun",
+      "strict_passes": 1083,
+      "strict_rate": 0.5231884057971015
+    }
+  ],
+  "schema_version": 1
+}

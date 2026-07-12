@@ -1,0 +1,111 @@
+import json
+import time
+
+from ortools.linear_solver import pywraplp
+
+
+SPEC = json.loads({{ spec_json | tojson }})
+
+
+def write_solution(result):
+    with open("solution.json", "w", encoding="utf-8") as output_file:
+        json.dump(result, output_file, indent=2)
+
+
+def normalize_number(value):
+    rounded = round(value)
+    if abs(value - rounded) <= 1e-9:
+        return int(rounded)
+    return value
+
+
+def main():
+    start = time.perf_counter()
+    solver_name = "SCIP" if any(variable["is_integer"] for variable in SPEC["variables"]) else "GLOP"
+    try:
+        solver = pywraplp.Solver.CreateSolver(solver_name)
+        if solver is None:
+            write_solution(
+                {
+                    "status": "ERROR",
+                    "objective_value": None,
+                    "solution": {},
+                    "runtime_sec": time.perf_counter() - start,
+                    "solver": "ortools.linear_solver",
+                    "violations": [f"{solver_name} is unavailable."],
+                }
+            )
+            return
+
+        if solver_name == "GLOP":
+            solver.SetSolverSpecificParametersAsString("use_preprocessing: false")
+
+        variables = {}
+        for variable in SPEC["variables"]:
+            upper_bound = solver.infinity() if variable["ub"] is None else variable["ub"]
+            if variable["is_integer"]:
+                variables[variable["name"]] = solver.IntVar(variable["lb"], upper_bound, variable["name"])
+            else:
+                variables[variable["name"]] = solver.NumVar(variable["lb"], upper_bound, variable["name"])
+
+        for constraint in SPEC["constraints"]:
+            expression = solver.Sum(term["coef"] * variables[term["var"]] for term in constraint["terms"])
+            if constraint["op"] == "<=":
+                solver.Add(expression <= constraint["rhs"])
+            elif constraint["op"] == ">=":
+                solver.Add(expression >= constraint["rhs"])
+            else:
+                solver.Add(expression == constraint["rhs"])
+
+        objective = solver.Sum(
+            term["coef"] * variables[term["var"]] for term in SPEC["objective"]["terms"]
+        )
+        if SPEC["objective"]["sense"] == "maximize":
+            solver.Maximize(objective)
+        else:
+            solver.Minimize(objective)
+
+        status_code = solver.Solve()
+        status_map = {
+            pywraplp.Solver.OPTIMAL: "OPTIMAL",
+            pywraplp.Solver.FEASIBLE: "FEASIBLE",
+            pywraplp.Solver.INFEASIBLE: "INFEASIBLE",
+            pywraplp.Solver.UNBOUNDED: "UNBOUNDED",
+        }
+        status = status_map.get(status_code, "ERROR")
+        solution = {}
+        objective_value = None
+        if status in {"OPTIMAL", "FEASIBLE"}:
+            solution = {
+                "variables": {
+                    name: normalize_number(variable.solution_value())
+                    for name, variable in variables.items()
+                }
+            }
+            objective_value = normalize_number(solver.Objective().Value())
+
+        write_solution(
+            {
+                "status": status,
+                "objective_value": objective_value,
+                "solution": solution,
+                "runtime_sec": time.perf_counter() - start,
+                "solver": f"ortools.linear_solver:{solver_name}",
+                "violations": [] if status in {"OPTIMAL", "FEASIBLE"} else [status],
+            }
+        )
+    except Exception as exc:
+        write_solution(
+            {
+                "status": "ERROR",
+                "objective_value": None,
+                "solution": {},
+                "runtime_sec": time.perf_counter() - start,
+                "solver": f"ortools.linear_solver:{solver_name}",
+                "violations": [str(exc)],
+            }
+        )
+
+
+if __name__ == "__main__":
+    main()

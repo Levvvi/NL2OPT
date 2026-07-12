@@ -12,6 +12,7 @@ class ProblemType(str, Enum):
     ASSIGNMENT = "assignment"
     JOBSHOP = "jobshop"
     VRP = "vrp"
+    GENERIC_LP_MILP = "generic_lp_milp"
     UNSUPPORTED = "unsupported"
 
 

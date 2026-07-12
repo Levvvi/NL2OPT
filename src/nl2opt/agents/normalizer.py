@@ -129,6 +129,30 @@ def _normalize_vrp(data: dict[str, Any]) -> None:
         data["distance_matrix"] = _normalize_numeric_mapping(data["distance_matrix"])
 
 
+def _normalize_generic_lp(data: dict[str, Any]) -> None:
+    for variable in data.get("variables", []):
+        if not isinstance(variable, dict):
+            continue
+        for field_name in ("lb", "ub"):
+            if field_name in variable and variable[field_name] is not None:
+                variable[field_name] = _as_number(variable[field_name])
+
+    objective = data.get("objective")
+    if isinstance(objective, dict):
+        for term in objective.get("terms", []):
+            if isinstance(term, dict) and "coef" in term:
+                term["coef"] = _as_number(term["coef"])
+
+    for constraint in data.get("constraints", []):
+        if not isinstance(constraint, dict):
+            continue
+        if "rhs" in constraint:
+            constraint["rhs"] = _as_number(constraint["rhs"])
+        for term in constraint.get("terms", []):
+            if isinstance(term, dict) and "coef" in term:
+                term["coef"] = _as_number(term["coef"])
+
+
 def normalize_spec_dict(problem_type: ProblemType, data: dict[str, Any]) -> dict[str, Any]:
     normalized = deepcopy(data)
     if "problem_type" in normalized and isinstance(normalized["problem_type"], str):
@@ -143,4 +167,6 @@ def normalize_spec_dict(problem_type: ProblemType, data: dict[str, Any]) -> dict
         _normalize_jobshop(normalized)
     elif problem_type is ProblemType.VRP:
         _normalize_vrp(normalized)
+    elif problem_type is ProblemType.GENERIC_LP_MILP:
+        _normalize_generic_lp(normalized)
     return normalized

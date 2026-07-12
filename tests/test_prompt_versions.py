@@ -67,6 +67,37 @@ def test_build_extractor_prompt_v2_contains_jobshop_hints():
     assert "objective 必须是 minimize makespan" in user_prompt
 
 
+def test_build_extractor_prompt_v4_supports_generic_linear_and_explicit_refusal():
+    from nl2opt.agents.prompts import build_extractor_prompt
+    from nl2opt.schemas import GenericLpSpec, ProblemType
+
+    _, user_prompt = build_extractor_prompt(
+        "Maximize x subject to linear constraints.",
+        ProblemType.GENERIC_LP_MILP,
+        GenericLpSpec.model_json_schema(),
+        prompt_version="v4",
+    )
+
+    assert "generic_lp_milp" in user_prompt
+    assert "UnsupportedProblemSpec" in user_prompt
+    assert "non-representable" in user_prompt
+
+
+def test_build_extractor_prompt_v3_does_not_gain_generic_or_refusal_rules():
+    from nl2opt.agents.prompts import build_extractor_prompt
+    from nl2opt.schemas import ProblemType
+
+    _, user_prompt = build_extractor_prompt(
+        "production request",
+        ProblemType.PRODUCTION,
+        {},
+        prompt_version="v3",
+    )
+
+    assert "generic_lp_milp" not in user_prompt
+    assert "UnsupportedProblemSpec" not in user_prompt
+
+
 def test_build_extractor_prompt_v2_contains_vrp_hints():
     from nl2opt.agents.prompts import build_extractor_prompt
     from nl2opt.schemas import ProblemType
