@@ -822,6 +822,157 @@ def test_translation_audit_resume_does_not_append_duplicate_keys(tmp_path: Path)
     ]
 
 
+def _interrupted_sampled_failure(tmp_path: Path) -> tuple[BenchmarkRunConfig, Path, dict[str, object]]:
+    datasets_dir = tmp_path / "datasets"
+    _write_dataset(datasets_dir, rows=_rows())
+
+    class NumberChangingClient:
+        def complete_json(self, _system, _prompt, **_kwargs):
+            return LLMResponse(
+                content=json.dumps({"translation": "x \u5c0f\u4e8e\u7b49\u4e8e 2"}, ensure_ascii=False),
+                provider="fake-provider",
+                model="fake-translator",
+                usage={"prompt_tokens": 3, "completion_tokens": 4, "total_tokens": 7},
+            )
+
+    config = BenchmarkRunConfig(
+        datasets_dir=datasets_dir,
+        results_csv=tmp_path / "results.csv",
+        dataset="nl4opt",
+        track="zh",
+        repetitions=1,
+        client=NumberChangingClient(),
+        attempt_runner=lambda *_args, **_kwargs: pytest.fail("numeric mismatch must not execute an attempt"),
+    )
+    results = run_benchmark(config)
+    result_row = next(csv.DictReader(results.open("r", newline="", encoding="utf-8")))
+    artifact = json.loads(Path(result_row["failure_artifact"]).read_text(encoding="utf-8"))
+    audit = results.parent / "translation_audit.csv"
+    audit.write_text(",".join(benchmark_module._AUDIT_FIELDS) + "\n", encoding="utf-8")
+    return config, results, artifact
+
+
+def test_resume_repairs_missing_sampled_failure_audit_from_artifact_without_execution(tmp_path: Path) -> None:
+    config, results, artifact = _interrupted_sampled_failure(tmp_path)
+
+    class ExplodingClient:
+        def complete_json(self, *_args, **_kwargs):
+            pytest.fail("resume recovery must not call the API")
+
+    def exploding_attempt(*_args: object, **_kwargs: object) -> BenchmarkAttempt:
+        pytest.fail("resume recovery must not execute an attempt")
+
+    run_benchmark(
+        BenchmarkRunConfig(
+            **{
+                **config.__dict__,
+                "resume": True,
+                "client": ExplodingClient(),
+                "attempt_runner": exploding_attempt,
+            }
+        )
+    )
+
+    audit_rows = list(
+        csv.DictReader((results.parent / "translation_audit.csv").open("r", newline="", encoding="utf-8"))
+    )
+    assert len(audit_rows) == 1
+    row = audit_rows[0]
+    translation = artifact["translation"]
+    assert row == {
+        "dataset": artifact["dataset"],
+        "item_id": artifact["item_id"],
+        "repetition": str(artifact["repetition"]),
+        "source_text": artifact["source_text"],
+        "translated_text": translation["translated_text"],
+        "source_number_tokens": json.dumps(translation["source_numbers"], ensure_ascii=False),
+        "translated_number_tokens": json.dumps(translation["translated_numbers"], ensure_ascii=False),
+        "numbers_match": str(translation["numbers_match"]),
+        "translation_model": translation["model"],
+        "translation_usage": json.dumps(translation["usage"], ensure_ascii=False, sort_keys=True),
+        "human_audit_status": "pending",
+        "human_audit_notes": "",
+    }
+    assert _count_csv_rows(results) == 1
+
+    run_benchmark(
+        BenchmarkRunConfig(
+            **{
+                **config.__dict__,
+                "resume": True,
+                "client": ExplodingClient(),
+                "attempt_runner": exploding_attempt,
+            }
+        )
+    )
+    assert _count_csv_rows(results) == 1
+    assert _count_csv_rows(results.parent / "translation_audit.csv") == 1
+
+
+@pytest.mark.parametrize("artifact_problem", ["missing", "inconsistent"])
+def test_resume_missing_sampled_audit_fails_closed_without_changing_csvs(
+    tmp_path: Path, artifact_problem: str
+) -> None:
+    config, results, _artifact = _interrupted_sampled_failure(tmp_path)
+    result_row = next(csv.DictReader(results.open("r", newline="", encoding="utf-8")))
+    artifact_path = Path(result_row["failure_artifact"])
+    if artifact_problem == "missing":
+        artifact_path.unlink()
+    else:
+        payload = json.loads(artifact_path.read_text(encoding="utf-8"))
+        payload["source_text"] = "different source"
+        artifact_path.write_text(json.dumps(payload), encoding="utf-8")
+    results_before = results.read_bytes()
+    audit = results.parent / "translation_audit.csv"
+    audit_before = audit.read_bytes()
+
+    with pytest.raises(ValueError, match="missing translation audit.*failure artifact"):
+        run_benchmark(BenchmarkRunConfig(**{**config.__dict__, "resume": True}))
+
+    assert results.read_bytes() == results_before
+    assert audit.read_bytes() == audit_before
+
+
+def test_runner_flushes_audit_and_result_rows_at_each_attempt_boundary(tmp_path: Path) -> None:
+    datasets_dir = tmp_path / "datasets"
+    _write_dataset(datasets_dir, rows=_rows())
+    results = tmp_path / "results.csv"
+    audit = tmp_path / "translation_audit.csv"
+
+    class NumberPreservingClient:
+        def complete_json(self, _system, _prompt, **_kwargs):
+            return LLMResponse(
+                content=json.dumps({"translation": "x \u5c0f\u4e8e\u7b49\u4e8e 1"}, ensure_ascii=False),
+                provider="fake",
+                model="fake-translator",
+            )
+
+    def crash_on_second_attempt(_item, _text, repetition, _config):
+        if repetition == 1:
+            persisted_audits = list(csv.DictReader(audit.open("r", newline="", encoding="utf-8")))
+            assert len(persisted_audits) == 1
+            return _successful_attempt()
+        persisted_results = list(csv.DictReader(results.open("r", newline="", encoding="utf-8")))
+        assert len(persisted_results) == 1
+        raise RuntimeError("simulated external interruption")
+
+    with pytest.raises(RuntimeError, match="simulated external interruption"):
+        run_benchmark(
+            BenchmarkRunConfig(
+                datasets_dir=datasets_dir,
+                results_csv=results,
+                dataset="nl4opt",
+                track="zh",
+                repetitions=2,
+                client=NumberPreservingClient(),
+                attempt_runner=crash_on_second_attempt,
+            )
+        )
+
+    assert _count_csv_rows(audit) == 2
+    assert _count_csv_rows(results) == 1
+
+
 def test_runner_records_industryor_metadata_needed_for_reporting(tmp_path: Path) -> None:
     datasets_dir = tmp_path / "datasets"
     _write_dataset(

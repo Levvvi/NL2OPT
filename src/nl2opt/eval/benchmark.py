@@ -734,6 +734,13 @@ def _resume_keys(results_csv: Path) -> set[tuple[str, str, str, int, str]]:
         }
 
 
+def _resume_rows(results_csv: Path) -> list[dict[str, str]]:
+    if not results_csv.exists() or results_csv.stat().st_size == 0:
+        return []
+    with results_csv.open("r", newline="", encoding="utf-8") as handle:
+        return list(csv.DictReader(handle))
+
+
 def _audit_resume_keys(audit_csv: Path) -> set[tuple[str, str, int]]:
     if not audit_csv.exists() or audit_csv.stat().st_size == 0:
         return set()
@@ -773,6 +780,89 @@ def _audit_item_keys(items: list[BenchmarkItem], fraction: float) -> set[tuple[s
 
 def _json_cell(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True) if value is not None else ""
+
+
+def _recovered_audit_rows(
+    *,
+    results_csv: Path,
+    items: list[BenchmarkItem],
+    sampled_items: set[tuple[str, str]],
+    existing_audit_keys: set[tuple[str, str, int]],
+    checker_retry: str,
+) -> list[dict[str, Any]]:
+    """Validate and reconstruct audit rows lost after persisted result rows."""
+
+    item_by_key = {(item.dataset, item.item_id): item for item in items}
+    recovered: list[dict[str, Any]] = []
+    planned_keys: set[tuple[str, str, int]] = set()
+    required_translation_fields = {
+        "translated_text",
+        "model",
+        "usage",
+        "source_numbers",
+        "translated_numbers",
+        "numbers_match",
+    }
+    for result in _resume_rows(results_csv):
+        if result.get("track") != "zh" or result.get("checker_retry") != checker_retry:
+            continue
+        item_key = (result.get("dataset", ""), result.get("item_id", ""))
+        if item_key not in sampled_items:
+            continue
+        try:
+            repetition = int(result["repetition"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("existing sampled Chinese result has an invalid repetition") from exc
+        audit_key = (*item_key, repetition)
+        if audit_key in existing_audit_keys or audit_key in planned_keys:
+            continue
+
+        context = f"{item_key[0]}/{item_key[1]}/r{repetition}"
+        artifact_value = result.get("failure_artifact", "").strip()
+        try:
+            if not artifact_value:
+                raise ValueError("result has no recorded failure artifact")
+            artifact_path = Path(artifact_value)
+            artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+            item = item_by_key[item_key]
+            expected = {
+                "dataset": item.dataset,
+                "item_id": item.item_id,
+                "track": "zh",
+                "repetition": repetition,
+                "checker_retry": checker_retry,
+                "source_text": item.question,
+            }
+            if not isinstance(artifact, Mapping) or any(artifact.get(key) != value for key, value in expected.items()):
+                raise ValueError("failure artifact metadata is inconsistent")
+            translation = artifact.get("translation")
+            if not isinstance(translation, Mapping):
+                raise ValueError("failure artifact has no translation object")
+            if not required_translation_fields.issubset(translation):
+                raise ValueError("failure artifact translation object is incomplete")
+        except (KeyError, OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+            raise ValueError(
+                f"missing translation audit for {context}: failure artifact is missing or inconsistent"
+            ) from exc
+
+        recovered.append(
+            {
+                "dataset": item.dataset,
+                "item_id": item.item_id,
+                "repetition": repetition,
+                "source_text": artifact["source_text"],
+                "translated_text": translation["translated_text"] or "",
+                "source_number_tokens": _json_cell(translation["source_numbers"]),
+                "translated_number_tokens": _json_cell(translation["translated_numbers"]),
+                "numbers_match": translation["numbers_match"],
+                "translation_model": translation["model"] or "",
+                "translation_usage": _json_cell(translation["usage"]),
+                "human_audit_status": "pending",
+                "human_audit_notes": "",
+            }
+        )
+        planned_keys.add(audit_key)
+    return recovered
 
 
 def _attempt_payload(attempt: BenchmarkAttempt) -> dict[str, Any]:
@@ -1058,6 +1148,17 @@ def run_benchmark(config: BenchmarkRunConfig) -> Path:
     results_needs_header = not results_csv.exists() or results_csv.stat().st_size == 0
     audit_needs_header = not audit_csv.exists() or audit_csv.stat().st_size == 0
     checker_retry_value = "on" if config.checker_retry else "off"
+    recovered_audits = (
+        _recovered_audit_rows(
+            results_csv=results_csv,
+            items=all_items,
+            sampled_items=audit_keys,
+            existing_audit_keys=existing_audit_keys,
+            checker_retry=checker_retry_value,
+        )
+        if config.resume
+        else []
+    )
     client: LLMClient | None = config.client
 
     with results_csv.open("a", newline="", encoding="utf-8") as results_handle, audit_csv.open(
@@ -1069,6 +1170,16 @@ def run_benchmark(config: BenchmarkRunConfig) -> Path:
             results_writer.writeheader()
         if audit_needs_header:
             audit_writer.writeheader()
+        for recovered_audit in recovered_audits:
+            audit_writer.writerow(recovered_audit)
+            audit_handle.flush()
+            existing_audit_keys.add(
+                (
+                    str(recovered_audit["dataset"]),
+                    str(recovered_audit["item_id"]),
+                    int(recovered_audit["repetition"]),
+                )
+            )
 
         for item in all_items:
             for track in tracks:
@@ -1130,6 +1241,7 @@ def run_benchmark(config: BenchmarkRunConfig) -> Path:
                                     "human_audit_notes": "",
                                 }
                             )
+                            audit_handle.flush()
                             existing_audit_keys.add(audit_key)
 
                     if error is None:
@@ -1226,5 +1338,6 @@ def run_benchmark(config: BenchmarkRunConfig) -> Path:
                             "failure_artifact": str(artifact_path) if artifact_path else "",
                         }
                     )
+                    results_handle.flush()
     _patch_manifest_completion(run_manifest, _utc_iso8601())
     return results_csv

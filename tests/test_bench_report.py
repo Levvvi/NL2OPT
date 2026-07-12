@@ -217,6 +217,38 @@ def test_report_refuses_incomplete_translation_audit(tmp_path: Path) -> None:
     assert not output.exists()
 
 
+def test_report_accepts_rejected_number_mismatch_and_keeps_attempt_in_total(tmp_path: Path) -> None:
+    results, manifest, audit = _write_inputs(tmp_path, rows=_result_rows(), audit_status="approved")
+    audit_rows = list(csv.DictReader(audit.open("r", newline="", encoding="utf-8")))
+    audit_rows[0]["numbers_match"] = "False"
+    audit_rows[0]["human_audit_status"] = "rejected"
+    with audit.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=audit_rows[0])
+        writer.writeheader()
+        writer.writerows(audit_rows)
+
+    output = tmp_path / "report.md"
+    render_benchmark_report(results, manifest, audit, output)
+
+    report = output.read_text(encoding="utf-8")
+    assert "contains 12 attempts" in report
+    assert "\u5df2\u62d2\u7edd\uff1a1" in report
+
+
+@pytest.mark.parametrize("status", ["approved", "waived"])
+def test_report_refuses_non_rejected_number_mismatch(tmp_path: Path, status: str) -> None:
+    results, manifest, audit = _write_inputs(tmp_path, rows=_result_rows(), audit_status=status)
+    audit_rows = list(csv.DictReader(audit.open("r", newline="", encoding="utf-8")))
+    audit_rows[0]["numbers_match"] = "False"
+    with audit.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=audit_rows[0])
+        writer.writeheader()
+        writer.writerows(audit_rows)
+
+    with pytest.raises(ValueError, match="Arabic-number mismatch.*rejected"):
+        render_benchmark_report(results, manifest, audit, tmp_path / "report.md")
+
+
 def test_report_refuses_missing_deterministic_audit_row(tmp_path: Path) -> None:
     results, manifest, audit = _write_inputs(
         tmp_path,

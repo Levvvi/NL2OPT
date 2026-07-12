@@ -142,8 +142,8 @@ def _audit_summary(audit_rows: list[dict[str, str]]) -> Counter[str]:
         status = row["human_audit_status"].strip().lower()
         if status not in _COMPLETE_AUDIT_STATUSES:
             raise ValueError(f"translation audit is incomplete: {status or 'blank'} status")
-        if not _as_bool(row["numbers_match"], field="numbers_match"):
-            raise ValueError("translation audit contains an Arabic-number mismatch")
+        if not _as_bool(row["numbers_match"], field="numbers_match") and status != "rejected":
+            raise ValueError("translation audit contains an Arabic-number mismatch not marked rejected")
         statuses[status] += 1
     return statuses
 
