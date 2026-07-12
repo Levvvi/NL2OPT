@@ -32,6 +32,14 @@ pytest -q tests/test_benchmark.py tests/test_bench_report.py --basetemp .tmp_pyt
 
 Result: `127 passed, 3 warnings in 2.88s` (exit 0).
 
+Diff validation command:
+
+```powershell
+git diff --check
+```
+
+Result: no output (exit 0).
+
 ## Changed files
 
 - `src/nl2opt/eval/benchmark.py`
