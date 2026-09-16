@@ -12,8 +12,7 @@ from nl2opt.agents.extractor import extract_problem_spec
 from nl2opt.agents.llm_client import DeepSeekClient, LLMClient, MockLLMClient
 from nl2opt.agents.router import route_text
 from nl2opt.config import get_deepseek_api_key_source
-from nl2opt.pipeline import run_problem_spec
-from nl2opt.schemas import ProblemType
+from nl2opt.pipeline import missing_required_fields, run_problem_spec
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -238,56 +237,6 @@ def _failure_stage(error: str | None, validation_errors: list[str], pipeline_err
     return "api_error" if error else "unknown"
 
 
-REQUIRED_MISSING_MARKERS: dict[str, tuple[str, ...]] = {
-    ProblemType.PRODUCTION.value: (
-        "products",
-        "profit",
-        "resources",
-        "capacity",
-        "consumption",
-        "labor",
-        "material",
-    ),
-    ProblemType.ASSIGNMENT.value: (
-        "employees",
-        "workers",
-        "tasks",
-        "capacity",
-        "costs",
-        "cost",
-        "cost_matrix",
-    ),
-    ProblemType.JOBSHOP.value: (
-        "machines",
-        "jobs",
-        "operations",
-        "machine",
-        "duration",
-        "processing_time",
-    ),
-    ProblemType.VRP.value: (
-        "depot",
-        "vehicles",
-        "vehicle",
-        "capacity",
-        "customers",
-        "demand",
-        "distance_matrix",
-        "distance",
-    ),
-}
-
-
-def _missing_required_fields(problem_type: str, missing_fields: list[str]) -> list[str]:
-    markers = REQUIRED_MISSING_MARKERS.get(problem_type, ())
-    required: list[str] = []
-    for field in missing_fields:
-        normalized = str(field).lower()
-        if any(marker.lower() in normalized for marker in markers):
-            required.append(str(field))
-    return required
-
-
 def evaluate_deepseek_extractor_cases(
     path: Path | None,
     output_dir: Path,
@@ -380,10 +329,7 @@ def evaluate_deepseek_extractor_cases(
 
             if extraction_result.success:
                 spec_success += 1
-                required_missing = _missing_required_fields(
-                    expected_type,
-                    list(getattr(extraction_result.spec, "missing_fields", []) or []),
-                )
+                required_missing = missing_required_fields(extraction_result.spec)
                 if required_missing:
                     stage = "missing_required_fields"
                     message = "missing required fields: " + ", ".join(required_missing)

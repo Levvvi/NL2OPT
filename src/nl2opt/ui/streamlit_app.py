@@ -55,6 +55,7 @@ def run_single_problem(
         return {
             "success": False,
             "error": "LLM client is required for live extraction.",
+            "failure_stage": "configuration_error",
             "extractor_result": None,
             "problem_spec": None,
             "pipeline_result": None,
@@ -74,6 +75,7 @@ def run_single_problem(
         return {
             "success": False,
             "error": extraction.error or "extractor failed",
+            "failure_stage": "extraction_error",
             "extractor_result": asdict(extraction),
             "problem_spec": extraction.spec_dict,
             "pipeline_result": None,
@@ -87,15 +89,18 @@ def run_single_problem(
     pipeline_dict = _pipeline_to_dict(pipeline_result)
     solver_result = _safe_json(pipeline_result.solution_path)
 
-    checker_report = {
-        "passed": pipeline_result.checker_passed,
-        "violations": pipeline_result.violations,
-    }
-    explanation = explain_solution(extraction.problem_type, pipeline_dict, solver_result)
+    checker_report = pipeline_result.checker_report
+    if pipeline_result.checker_passed:
+        explanation = explain_solution(extraction.problem_type, pipeline_dict, solver_result)
+    elif checker_report is None:
+        explanation = f"运行已停止，尚未完成结果复核：{pipeline_result.error}"
+    else:
+        explanation = "结果复核未通过：" + "; ".join(pipeline_result.violations)
 
     return {
         "success": bool(extraction.success and pipeline_result.checker_passed),
         "error": pipeline_result.error,
+        "failure_stage": pipeline_result.failure_stage,
         "extractor_result": {
             "success": extraction.success,
             "problem_type": extraction.problem_type,
@@ -146,7 +151,7 @@ def main() -> None:
         raise RuntimeError("Streamlit is not installed. Run `python -m pip install -e \".[dev]\"` first.")
 
     st.set_page_config(page_title="NL2OPT", layout="wide")
-    st.title("NL2OPT: 中文自然语言到优化模型的 Agent")
+    st.title("NL2OPT: 中文自然语言到优化模型的受控工作流")
     st.caption("中文输入 -> ProblemSpec -> OR-Tools 求解 -> checker 校验 -> 中文解释")
 
     selected, summary, key_available = _render_sidebar()
@@ -175,7 +180,10 @@ def main() -> None:
                 st.write("Calling DeepSeek extractor...")
                 client = DeepSeekClient()
                 result = run_single_problem(prompt_zh, prompt_version=PROMPT_VERSION, client=client)
-                status.update(label="success" if result["success"] else "failed", state="complete")
+                status.update(
+                    label="success" if result["success"] else "failed",
+                    state="complete" if result["success"] else "error",
+                )
 
             if result["success"]:
                 st.success("Pipeline completed and checker passed.")

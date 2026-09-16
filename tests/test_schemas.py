@@ -65,3 +65,22 @@ def test_parse_solver_result():
 
     assert result.status is SolverStatus.OPTIMAL
     assert result.objective_value == 180.0
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf")])
+@pytest.mark.parametrize("field", ["objective_value", "runtime_sec", "solution"])
+def test_solver_result_rejects_nonfinite_numbers(field, value):
+    from pydantic import ValidationError
+    from nl2opt.schemas import SolverResult
+
+    payload = {
+        "status": "FEASIBLE",
+        "objective_value": 20,
+        "runtime_sec": 0.1,
+        "solver": "test",
+        "solution": {},
+    }
+    payload[field] = {"routes": [{"distance": value}]} if field == "solution" else value
+
+    with pytest.raises(ValidationError, match="finite"):
+        SolverResult.model_validate(payload)

@@ -4,10 +4,10 @@
 
 | Module | Responsibility |
 | --- | --- |
-| Router | Classifies Chinese input into `production`, `assignment`, `jobshop`, `vrp`, or `unsupported`. Current implementation is rule-based. |
+| Router | Classifies Chinese input into `production`, `assignment`, `jobshop`, `vrp`, `generic_lp_milp`, or `unsupported`. Current implementation is rule-based. |
 | Extractor | Builds prompt, calls `LLMClient`, parses JSON, validates extracted data against the selected Pydantic schema. |
 | Normalizer | Performs deterministic field-name normalization for common LLM aliases before schema validation. It does not invent missing numbers. |
-| ProblemSpec / Schema | Defines strict Pydantic models for the four supported optimization problem types. Extra fields are forbidden. |
+| ProblemSpec / Schema | Defines strict Pydantic models for four domain-specific families and strict generic LP/IP/MIP. Extra fields are forbidden. |
 | Solver / OR-Tools | Uses Jinja2 templates to generate OR-Tools code for the selected schema and runs it locally through the runner. |
 | Checker | Independently recomputes feasibility and objective consistency from the original spec and solver result. |
 | Evaluator | Runs router + extractor + pipeline across JSONL case sets and computes pass rates. |
@@ -23,7 +23,8 @@ flowchart TD
     D --> E["JSON parser"]
     E --> F["Normalizer"]
     F --> G["Pydantic ProblemSpec"]
-    G --> H["Template renderer"]
+    G --> Q["Shared missing-field gate"]
+    Q --> H["Template renderer"]
     H --> I["Generated OR-Tools model"]
     I --> J["Runner"]
     J --> K["SolverResult"]
@@ -54,3 +55,9 @@ Examples:
 - vrp: verify depot start/end, customer coverage, vehicle capacity, route distances, and total distance.
 
 This makes failures easier to diagnose: a case can fail at extraction, schema validation, solving, checker validation, or objective matching.
+
+## Release observability
+
+The controlled workflow has no general autonomous tool loop. The pipeline records `failure_stage` and persists full `checker_report.json` content including recomputed resource usage and objectives; the unresolved-fields gate is shared by evaluation and interactive paths. Production validates finite nonnegative integer quantities and rejects unknown product names. Missing product quantities default to zero; complete product coverage is not enforced. `SolverResult` rejects non-finite nested numeric output.
+
+The optional bounded HTTP service is described in [api.md](api.md). It permits only allowlisted small models and distinguishes deterministic solver execution, manual candidate checking, and paid text extraction. A checker pass establishes only the implemented checks against the extracted spec; it does not establish full natural-language fidelity or independently prove global optimality.

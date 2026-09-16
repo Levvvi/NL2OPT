@@ -138,6 +138,7 @@ def test_deepseek_eval_stops_before_pipeline_for_missing_required_fields(tmp_pat
 
 
 def test_extractor_eval_provider_mock_still_works(tmp_path):
+    cases_path = write_single_case(tmp_path)
     completed = subprocess.run(
         [
             sys.executable,
@@ -145,14 +146,17 @@ def test_extractor_eval_provider_mock_still_works(tmp_path):
             "nl2opt.eval.extractor_eval",
             "--mock",
             "--cases",
-            str(CASES_PATH),
+            str(cases_path),
             "--output-dir",
             str(tmp_path / "mock_eval"),
+            "--timeout-sec",
+            "30",
         ],
         cwd=ROOT,
         capture_output=True,
         text=True,
         check=False,
+        timeout=45,
     )
 
     assert completed.returncode == 0, completed.stderr

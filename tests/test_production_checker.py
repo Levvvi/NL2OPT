@@ -4,6 +4,8 @@ import copy
 import json
 from pathlib import Path
 
+import pytest
+
 from nl2opt.schemas import ProductionProblemSpec, SolverResult
 
 
@@ -84,3 +86,41 @@ def test_checker_rejects_unknown_product():
 
     assert report.passed is False
     assert any("unknown product" in violation for violation in report.violations)
+
+
+@pytest.mark.parametrize("quantity", [0.5, True, "40", float("nan"), float("inf"), -float("inf")])
+def test_checker_rejects_invalid_production_quantities(quantity):
+    from nl2opt.checkers.production_checker import check_production_solution
+
+    # Exercise the checker itself even if a caller bypasses SolverResult parsing.
+    result = valid_result().model_copy(update={
+        "solution": {"quantities": {"A": quantity, "B": 0}},
+        "objective_value": 20,
+    })
+
+    report = check_production_solution(load_spec(), result)
+
+    assert report.passed is False
+    assert any("quantity for A" in violation for violation in report.violations)
+
+
+@pytest.mark.parametrize("objective", [float("nan"), float("inf"), -float("inf")])
+def test_checker_rejects_nonfinite_objective(objective):
+    from nl2opt.checkers.production_checker import check_production_solution
+
+    result = valid_result().model_copy(update={"objective_value": objective})
+
+    report = check_production_solution(load_spec(), result)
+
+    assert report.passed is False
+    assert "objective_value must be a finite number" in report.violations
+
+
+def test_checker_accepts_solver_rounding_within_integer_tolerance():
+    from nl2opt.checkers.production_checker import check_production_solution
+
+    result = valid_result().model_copy(update={
+        "solution": {"quantities": {"A": 40 + 1e-9, "B": 20}},
+    })
+
+    assert check_production_solution(load_spec(), result).passed is True

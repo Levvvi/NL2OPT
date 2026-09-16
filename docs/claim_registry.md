@@ -27,3 +27,15 @@ Per-track results, Wilson intervals, failure distributions, audit decisions,
 and limitations are in `reports/bench_report.md`; sanitized artifacts and
 SHA-256 values are in `reports/artifacts/`. The existing self-built 20/20 result
 remains a separately scoped claim.
+
+## Portfolio release clarification (2026-09-16)
+
+- Describe NL2OPT as a **controlled optimization-modeling workflow**. The Router is rule based; it is not a general autonomous tool loop.
+- The first gate validates structured fields, types, implemented rules, and unresolved required fields. The second gate independently recomputes constraints and the objective against that structured model. Neither proves complete semantic fidelity to the original prompt, and a checker pass is not a separate proof of global optimality.
+- Production checker evidence may claim integer/nonnegative/finite quantity checks, rejection of unknown product names, resource capacity, and objective consistency only with the source version and regression evidence in `docs/nl2opt_audit.md`.
+- A missing product quantity defaults to zero. Do not claim the production checker enforces complete product coverage.
+- The public benchmark denominator is **345 distinct source items × 2 language tracks × 3 repetitions = 2,070 attempts per run**, not 2,070 distinct optimization problems.
+- The self-built live 20/20 result is dated **2026-06-30**. A current `case_quality` result of 20/20 is a static dataset check, not a repeat of that live evaluation. Unit/integration test counts are another separate measure.
+- `reports/portfolio/evidence.json` contains fresh deterministic solver evidence and clearly labeled synthetic faults. Its Chinese prompt is a human paraphrase; that deterministic artifact does not imply a live model call. The separate 2026-09-16 single-case live smoke is linked from `docs/nl2opt_audit.md` and does not replace historical evaluations.
+- `reports/portfolio/failure-index.json` derives from published CSV fields. It supports failure-stage screening, not access to every historical full failure archive.
+- Local test results do not establish that the newly added GitHub Actions workflow has run remotely, nor that the optional live service has been deployed publicly.

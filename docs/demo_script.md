@@ -1,157 +1,49 @@
-# Demo Script
+# 90 秒演示脚本
 
-## Recommended Demo Order
+演示入口使用个人网站 NL2OPT 项目页；无网络或无后端时直接打开仓库的 `reports/portfolio/evidence.json`。所有故障注入均明确标注，不冒充历史模型失败。
 
-1. Show README and final eval table.
-2. Start the Streamlit demo and point out final live eval `20/20` in the sidebar.
-3. Run the production demo and show `ProblemSpec JSON`, objective value, and checker report.
-4. Run the jobshop demo and show makespan plus precedence / machine-overlap checker output.
-5. Run the VRP demo and show route solution JSON plus capacity / distance checker output.
-6. Close with project boundaries: four small problem families, not an arbitrary optimization platform.
+## 展示顺序
 
-## Commands
+| 时间 | 操作 | 讲解重点 |
+| --- | --- | --- |
+| 0–15 秒 | 展示中文生产计划与两个检查关口 | 我把中文需求接入受控建模工作流。规则 Router 分类，模型抽取，固定模板求解。 |
+| 15–35 秒 | 查看成功案例 | 实际 OR-Tools 求得 A=40、B=20。checker 独立重算工时100、材料80、利润2200。 |
+| 35–55 秒 | 切到“故障注入：资源超限” | 人工改为 A=41、B=20 后，真实 checker 报告102>100、81>80；失败能够定位到后检。 |
+| 55–65 秒 | 切到“小数产量”或“缺参前检” | 资源不超限仍可能违反整数约束；缺参则在求解前拒绝，而不是编造参数。 |
+| 65–80 秒 | 打开公开失败索引，按类别筛选 | 每轮345题、2种语言、3次重复。索引来自已公开CSV；未公开的完整档案不提供伪链接。 |
+| 80–90 秒 | 展示边界及证据入口 | 前后检查不能证明中文理解完全正确，也不能独立证明最优性；给出版本、范围与可复现命令。 |
 
-Install and test:
-
-```bash
-python -m pip install -e ".[dev]"
-pytest
-```
-
-Check case quality:
+## 无密钥重建演示产物
 
 ```bash
-python -m nl2opt.eval.case_quality --difficulty all
+uv sync --locked --extra dev --python 3.11
+uv run pytest -q
+uv run python examples/run_all_basic.py --timeout-sec 30
+uv run python scripts/export_portfolio_evidence.py
 ```
 
-Run basic local demos:
+可展示的现有文件：
+
+- `reports/portfolio/evidence.json`：真实成功求解、真实故障检查、结构化输入和运行来源。
+- `reports/portfolio/failure-index.json`：公开CSV全部失败行的白名单字段。
+- `reports/artifacts/`：公开基准CSV、manifest、翻译审计和哈希。
+- `docs/nl2opt_audit.md`：本次环境、测试、未完成的外部验证。
+
+不再要求打开未随仓库提供的 `outputs/deepseek_extractor_eval/all/<case>/raw_response.txt` 等历史逐题目录。历史20题真实模型结果仅以已公开的 summary/report 为依据。
+
+## 现场操作备选
 
 ```bash
-python examples/run_all_basic.py
+uv run python -m nl2opt.pipeline examples/specs/production_basic.json --output-dir outputs/demo/production_basic
+uv run streamlit run src/nl2opt/ui/streamlit_app.py
 ```
 
-Run Streamlit local demo:
+生产样例生成的 `outputs/demo/production_basic/` 可查看 `solution.json`、`checker_report.json`、`pipeline_report.json`；这些路径在运行后才存在，不把它们当作已提交的历史产物。
 
-```bash
-streamlit run src/nl2opt/ui/streamlit_app.py
-```
+Streamlit的预设与自定义输入均需模型密钥；无密钥演示使用前述CLI固定JSON、静态证据或网站production参数求解。
 
-Run final live eval only when needed:
+## 在线测试说明
 
-```bash
-python -m nl2opt.eval.extractor_eval --prompt-version v3 --difficulty all
-```
+受限服务操作及配置见 [api.md](api.md)。在线求解应显示“本次实际执行”或“预生成证据”；live中文抽取仅在后端明确启用且配置密钥后可用。没有真实模型调用时，不能称作本次端到端模型验证。
 
-## Streamlit Demo Flow
-
-1. Open the page and show the sidebar:
-   - provider: DeepSeek
-   - model: `deepseek-v4-flash`
-   - prompt_version: `v3`
-   - mock: `false`
-   - final live eval: `20/20`
-   - API key status: `available` / `missing`, never the key value
-2. Select `production`, click `Run`, and show:
-   - input Chinese prompt
-   - `ProblemSpec JSON`
-   - `Solver Result`
-   - `Checker Report`
-   - deterministic Chinese explanation
-3. Select `jobshop`, click `Run`, and focus on:
-   - operations
-   - makespan
-   - checker validation for precedence and machine non-overlap
-4. Select `vrp`, click `Run`, and focus on:
-   - routes
-   - total distance
-   - checker validation for customer coverage, capacity, and route distance
-5. If time permits, paste a custom Chinese problem. Explain that this calls the real DeepSeek API.
-
-## Command-line Backup Cases
-
-### 1. Production
-
-Command:
-
-```bash
-python -m nl2opt.pipeline examples/specs/production_basic.json --output-dir outputs/demo/production_basic
-```
-
-Show:
-
-- `examples/specs/production_basic.json`
-- generated `outputs/demo/production_basic/solution.json`
-- generated `outputs/demo/production_basic/pipeline_report.json`
-- checker passed and objective value `2200`
-
-Talk track:
-
-> This is the simplest example of schema -> template -> OR-Tools -> checker. The checker recomputes resource usage and objective value.
-
-### 2. Jobshop
-
-Command:
-
-```bash
-python -m nl2opt.pipeline examples/specs/jobshop_basic.json --output-dir outputs/demo/jobshop_basic
-```
-
-Show:
-
-- job operations in the spec
-- CP-SAT solution operations
-- makespan `7`
-- checker verifies precedence and machine non-overlap
-
-Talk track:
-
-> This case demonstrates why a CP-SAT template is more appropriate than asking an LLM to hand-write scheduling code.
-
-### 3. VRP
-
-Command:
-
-```bash
-python -m nl2opt.pipeline examples/specs/vrp_basic.json --output-dir outputs/demo/vrp_basic
-```
-
-Show:
-
-- depot, customers, demands, distance matrix
-- route list in `solution.json`
-- total distance `44`
-- checker verifies customer coverage, capacity, and route distance
-
-Talk track:
-
-> The checker is useful here because route order and vehicle assignment can vary, but feasibility and total distance still have to be correct.
-
-## DeepSeek Live Artifact To Show
-
-Open one case directory, for example:
-
-```text
-outputs/deepseek_extractor_eval/all/extractor_production_01/
-```
-
-Show:
-
-- `raw_response.txt`
-- `parsed_spec.json`
-- `pipeline_report.json`
-- `extractor_result.json`
-
-Do not show or print environment variables or API keys.
-
-## If Something Fails During A Live Demo
-
-Do not rerun blindly. Explain the failure stage:
-
-- Router mismatch: classification keyword or problem wording issue.
-- Schema validation error: LLM output did not match required schema.
-- Missing required fields: input problem did not provide enough numeric data.
-- Checker failed: extracted model or solver result violates constraints.
-- Objective mismatch: feasible result exists but objective value differs from expected benchmark.
-- API error: key, model, network, quota, or provider issue.
-
-Then open the relevant `failure.json`, `extractor_result.json`, or `pipeline_report.json`. This is a strength of the project: failures are classified rather than hidden.
+现场失败时展示准确阶段：输入/缺参、抽取/解析、求解超时、结果解析或checker拒绝。保留 request/run ID、版本与脱敏明细，不打印密钥或请求头。

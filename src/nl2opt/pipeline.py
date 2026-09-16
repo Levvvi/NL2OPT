@@ -55,6 +55,9 @@ class PipelineResult:
     stdout: str
     stderr: str
     error: str | None
+    checker_report: dict[str, Any] | None = None
+    checker_report_path: str | None = None
+    failure_stage: str | None = None
 
     def to_report_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -151,6 +154,13 @@ def check_result_for_spec(
 
 def _write_pipeline_report(result: PipelineResult, output_dir: Path) -> PipelineResult:
     output_dir.mkdir(parents=True, exist_ok=True)
+    if result.checker_report is not None:
+        checker_path = output_dir / "checker_report.json"
+        result.checker_report_path = str(checker_path)
+        checker_path.write_text(
+            json.dumps(result.checker_report, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
     report_path = output_dir / "pipeline_report.json"
     result.report_path = str(report_path)
     report_path.write_text(
@@ -187,6 +197,16 @@ def _new_result(
     )
 
 
+def missing_required_fields(spec: Any) -> list[str]:
+    """Unresolved fields block solving; supported defaults belong in assumptions."""
+    unresolved = (
+        str(field).strip()
+        for field in (getattr(spec, "missing_fields", []) or [])
+        if str(field).strip()
+    )
+    return list(dict.fromkeys(unresolved))
+
+
 def run_problem_spec(
     spec: Any,
     output_dir: Path,
@@ -199,9 +219,17 @@ def run_problem_spec(
         output_dir=output_dir,
     )
 
+    required_missing = missing_required_fields(spec)
+    if required_missing:
+        result.failure_stage = "missing_required_fields"
+        result.error = "missing required fields: " + ", ".join(required_missing)
+        result.violations = [result.error]
+        return _write_pipeline_report(result, output_dir)
+
     try:
         code = render_code_for_spec(spec)
     except Exception as exc:
+        result.failure_stage = "render_error"
         result.error = f"render failed: {exc}"
         result.violations = [result.error]
         return _write_pipeline_report(result, output_dir)
@@ -218,11 +246,13 @@ def run_problem_spec(
     result.stderr = run_result.stderr
 
     if run_result.timed_out:
+        result.failure_stage = "solve_timeout"
         result.error = f"runner timed out after {timeout_sec} seconds"
         result.violations = [result.error]
         return _write_pipeline_report(result, output_dir)
 
     if not run_result.solution_path.exists():
+        result.failure_stage = "solver_execution_error"
         result.error = "solution.json was not generated"
         if run_result.returncode not in (None, 0):
             result.error += f"; returncode={run_result.returncode}"
@@ -232,6 +262,7 @@ def run_problem_spec(
     try:
         solver_result = load_solver_result(run_result.solution_path)
     except (ValidationError, ValueError, OSError) as exc:
+        result.failure_stage = "solver_result_validation_error"
         result.error = f"failed to parse SolverResult: {exc}"
         result.violations = [result.error]
         return _write_pipeline_report(result, output_dir)
@@ -242,13 +273,16 @@ def run_problem_spec(
     try:
         checker_report = check_result_for_spec(spec, solver_result, timeout_sec=checker_timeout_sec)
     except Exception as exc:
+        result.failure_stage = "checker_error"
         result.error = f"checker failed to run: {exc}"
         result.violations = [result.error]
         return _write_pipeline_report(result, output_dir)
 
     result.checker_passed = checker_report.passed
+    result.checker_report = asdict(checker_report)
     result.violations = checker_report.violations
     if not checker_report.passed:
+        result.failure_stage = "checker_failed"
         result.error = "checker failed"
 
     return _write_pipeline_report(result, output_dir)
@@ -273,6 +307,7 @@ def run_problem_file(
             output_dir=output_dir,
             error=str(exc),
         )
+        result.failure_stage = "schema_validation_error"
         return _write_pipeline_report(result, output_dir)
 
     return run_problem_spec(spec, output_dir, timeout_sec=timeout_sec)
