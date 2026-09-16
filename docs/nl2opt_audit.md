@@ -47,7 +47,7 @@ uv run python scripts/export_portfolio_evidence.py
 | 完整公开报告重建 | 含 retry-on 对照参数，生成内容与已提交报告逐字相同 |
 | 证据导出 | 1次真实求解成功 + 3例明确标注的故障注入；972/987条公开失败行 |
 | 当前单题真实模型smoke | 2次真实调用：首轮schema拒绝；修复后成功，2.135秒、1478tokens、目标2200、checker通过 |
-| GitHub Actions | 已新增3.11/3.12无密钥工作流；本地验收不替代远程CI成功记录 |
+| GitHub Actions | 提交 `6684bf3a79b52be08547b3841dcda273b70e4928` 的 [PR验收](https://github.com/Levvvi/NL2OPT/actions/runs/35070598463) 与 [push验收](https://github.com/Levvvi/NL2OPT/actions/runs/35070596537) 全部通过；两轮的Python 3.11/3.12均完成锁定安装、全量测试、题集检查、四类示例与证据导出 |
 
 初次文档改版曾触发1项README固定词句断言，随后恢复英文范围说明并通过；API最终补充完成前的一轮旧403项测试也全部通过。首次Python3.12全量为411 passed / 1 failed：`test_evaluate_mock_extractor_cases_metrics`中的`extractor_jobshop_01`子进程超过测试默认10秒，逐题产物确认其余7题通过。随后仅统一包含jobshop的测试运行预算为30秒，产品默认时限不变，并以3.12连续两次全量复核。示例脚本增加可选`--timeout-sec`（默认仍10），CI与验收命令显式传30，给求解器、解释器启动和调度留出余量；这不是放宽在线接口时限。上述预验收不计入最终通过轮次。
 
@@ -106,4 +106,4 @@ uv run python scripts/export_portfolio_evidence.py
 
 ## 尚依赖外部条件的验证
 
-真实模型单题 smoke 已完成，不能据此推断完整20题集或公开基准在当前版本重新通过。公开后端可用性与远程CI需要实际部署/推送才能验证。许可协议涉及作者授权选择，本次未擅自赋予开源许可。
+真实模型单题 smoke 已完成，不能据此推断完整20题集或公开基准在当前版本重新通过。远程CI已验证；公网后端可用性仍需要实际部署才能验证。许可协议涉及作者授权选择，本次未擅自赋予开源许可。

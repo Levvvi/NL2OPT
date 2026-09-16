@@ -112,6 +112,6 @@ uv run python -m nl2opt.eval.bench_report \
   --output reports/bench_report.md
 ```
 
-GitHub Actions 使用 Python 3.11/3.12 和同一锁文件运行无密钥测试、四类演示和证据导出，不配置模型密钥、不自动运行付费评测。新增工作流在推送后才会产生远程 CI 记录。
+GitHub Actions 使用 Python 3.11/3.12 和同一锁文件运行无密钥测试、四类演示和证据导出，不配置模型密钥、不自动运行付费评测。[本次远程 CI](https://github.com/Levvvi/NL2OPT/actions/runs/35070598463) 已在两个 Python 版本上通过。
 
 技术栈：Python · Pydantic · DeepSeek API · Jinja2 · OR-Tools · pytest · Streamlit。

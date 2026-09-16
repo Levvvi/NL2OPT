@@ -20,7 +20,7 @@
 
 ## 外部运行状态
 
-- [ ] 新增工作流在GitHub远程运行通过：以Actions运行记录为准，本地测试不能代替。
+- [x] 提交 `6684bf3` 的GitHub远程 [PR](https://github.com/Levvvi/NL2OPT/actions/runs/35070598463) 与 [push](https://github.com/Levvvi/NL2OPT/actions/runs/35070596537) 验收均通过，Python 3.11/3.12全部步骤成功。
 - [x] 当前版本真实模型单题smoke：首轮schema拒绝已保留；修复后prompt v3、返回模型deepseek-flash、2135ms/1478tokens、目标2200且checker通过。仅单题，不继承或重跑历史20/20。
 - [ ] 公网后端部署健康检查：须部署后核验，不能以本地通过代替。
 
