@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from numbers import Real
 
 from nl2opt.checkers.base import CheckerReport
@@ -7,7 +8,7 @@ from nl2opt.schemas import ProductionProblemSpec, SolverResult, SolverStatus
 
 
 def _is_number(value: object) -> bool:
-    return isinstance(value, Real) and not isinstance(value, bool)
+    return isinstance(value, Real) and not isinstance(value, bool) and math.isfinite(value)
 
 
 def check_production_solution(
@@ -44,10 +45,13 @@ def check_production_solution(
             violations.append(f"unknown product in solution: {product_name}")
             continue
         if not _is_number(quantity):
-            violations.append(f"quantity for {product_name} must be numeric")
+            violations.append(f"quantity for {product_name} must be a finite number")
             continue
         if quantity < 0:
             violations.append(f"quantity for {product_name} cannot be negative")
+            continue
+        if abs(quantity - round(quantity)) > tolerance:
+            violations.append(f"quantity for {product_name} must be an integer")
             continue
         valid_quantities[product_name] = float(quantity)
 
@@ -71,6 +75,8 @@ def check_production_solution(
 
     if result.objective_value is None:
         violations.append("objective_value is required for feasible results")
+    elif not _is_number(result.objective_value):
+        violations.append("objective_value must be a finite number")
     elif abs(computed_objective - result.objective_value) > tolerance:
         violations.append(
             f"objective mismatch: computed={computed_objective}, reported={result.objective_value}"

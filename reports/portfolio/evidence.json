@@ -1,0 +1,498 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-16T07:48:16.964157+00:00",
+  "source": {
+    "base_commit": "06b8fa740fe534bccf887a2b4a9aa8de1158ad10",
+    "working_tree_modified": true,
+    "source_sha256": "10b06b98394eb170992b06cb014a4086b758a3f0b595149a86f4ac5947a3a564",
+    "source_files_sha256": {
+      "examples/specs/production_basic.json": "a9300bdc05fef860199bcb46c176b7544e0553c62bd3f85e8acf2f44d17c81e8",
+      "scripts/export_portfolio_evidence.py": "1f5d548b76aef715186da35263d74298618533b1f751c1c8becfed76270c06cc",
+      "src/nl2opt/__init__.py": "91447944015cec709e8aa7655f7e9d64e1e4508e7023a57fe3746911c0fc6fed",
+      "src/nl2opt/agents/__init__.py": "b86de9feb88207cfffb15d111a19bf0bf9ddc6291766e4cb8a41a4af2934a6b7",
+      "src/nl2opt/agents/extractor.py": "5fb85c0d2024466cc057047b15e2294bb3504706667af28af42b73bbe0a3ee14",
+      "src/nl2opt/agents/llm_client.py": "b221d9533d2516ea954ae568aeee94c6e17444074b4f40f09569bbb9e80b7ecd",
+      "src/nl2opt/agents/normalizer.py": "dfb18072cbe7fb080a7048317339428e9096148c17acbfe659fdf876970df631",
+      "src/nl2opt/agents/prompts.py": "fa33d737a5e1675d8b9b325238282a0eda85286f0750c97bef572048d9d9e5ed",
+      "src/nl2opt/agents/router.py": "320e5444be0c2b895aed3cb61fb8506cf63d543c1c6109f53ec3dd9815a26c2c",
+      "src/nl2opt/api.py": "4c246eb6d6a454e75a19e83229146fe80a504e6091bf2d680b2c63e6037bdb41",
+      "src/nl2opt/api_contract.py": "d642ac9e22e798b90925d6487704e2fedb425834876d776df80589f905ebf8ec",
+      "src/nl2opt/api_worker.py": "5b0db0883139fe63a0cac6a1fb1b9b8713b991699af892b82d9e01a329e84878",
+      "src/nl2opt/checkers/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "src/nl2opt/checkers/assignment_checker.py": "097b84e6dd2adbe46dafc7d0821049edb80209e7a8b899c75e0ed4ee73497c12",
+      "src/nl2opt/checkers/base.py": "a859e2f52096eef22a93da9f356b37943191543179f3234c4684500ae9380289",
+      "src/nl2opt/checkers/generic_lp_checker.py": "5403053a15f4e9fb5d393ed7b1bfaf4873c311746d55d4bdc930fceaf2b03715",
+      "src/nl2opt/checkers/jobshop_checker.py": "bc2b5ba88d19cf7777d57e60c52e4278f260a1ed5d270182e2ad3e2df5fdea35",
+      "src/nl2opt/checkers/production_checker.py": "067be82dec50dd3dc9960d4011a1e0d28ee348160e074c37cf4b9782805bf1dc",
+      "src/nl2opt/checkers/vrp_checker.py": "65317398f27db895a40a77996485db301440baf95e6c837a8e5ee48ee8908341",
+      "src/nl2opt/config.py": "3b94c200f9f071446718290c9117ef1319c8cd89b67b9aea12484eb839b39d27",
+      "src/nl2opt/eval/__init__.py": "dbe17d7597099d1787db8f890114a308365b7b8b84ca27eb35dc2268d6fdfeae",
+      "src/nl2opt/eval/bench_report.py": "68ba9a033edeb4caf7938e92a2ea9da3096a83edaeaaf38310778f220bbbe57d",
+      "src/nl2opt/eval/benchmark.py": "610fa621a8ad2def8f0e4023d06eabefa150b4beb40fccb1cc93b4f09e9e3d89",
+      "src/nl2opt/eval/case_quality.py": "6fa97aa4160d1f0a2b71545887c6f783f9dbf8fdc9b499bab0f54d10c34287ce",
+      "src/nl2opt/eval/extractor_eval.py": "17cb7567e86879301552c64b86815116e35d7d56293488ac94231153352f0834",
+      "src/nl2opt/eval/failure_analysis.py": "a2835330692e31c7bbba4738b7dd6b5f5b6737946790bca54876dd54b59a9b0f",
+      "src/nl2opt/eval/publication_export.py": "84899097e30efd157e12cc03975c47893d4bbd0821ae19465109d4ae17dfe710",
+      "src/nl2opt/eval/router_eval.py": "5615d696249723e6ef88c083cf5e5e15eba7ea824271ece118350b3cdc8800ec",
+      "src/nl2opt/eval/run_bench.py": "cbd3a30b6b26cee28494182619fca1aadb1930f9ba8663db27f6dbf5e13a536b",
+      "src/nl2opt/pipeline.py": "cba3ec67fdb2a6157b8595c5492b6b61d504a70e86788522ebaf6adcef2365e5",
+      "src/nl2opt/runtime/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "src/nl2opt/runtime/runner.py": "705a4a48498e16136c764ecd471d360432e79b27066919cdacd16927b9e3efdc",
+      "src/nl2opt/schemas/__init__.py": "c6c0ee6b1b80d4dfcba812afcb6fefbe5561ff9b61e653dbe216512214785baa",
+      "src/nl2opt/schemas/assignment.py": "09e279241e01113d03183073a2585cead74e4c639a5ac272c0deaa437ef50843",
+      "src/nl2opt/schemas/base.py": "2dafacdea153233ed7039fe21d2bbf9ad2233514fb769219236ab85483889267",
+      "src/nl2opt/schemas/generic_lp.py": "6c248194368c6805e0ead94c3b64e10ed925c8edac6c190ffc75d75df6c1394c",
+      "src/nl2opt/schemas/jobshop.py": "6cf7a438e5f14921a3f2933abdcb87dd6369c5f1212ceebbffddef8c3234d7a2",
+      "src/nl2opt/schemas/production.py": "60ab636500581dff86494401d25c3affc5ca3d25a986e86bc1bdb1773e9c9097",
+      "src/nl2opt/schemas/result.py": "e29a8a5fb24a7efa0ea43ece0d309afa6ef4ce045a40bbbfc3273fa562e885da",
+      "src/nl2opt/schemas/vrp.py": "18c31ce44cd1c6d65d50fd373782ea2f94133ba565b8b1b13a897f463c703773",
+      "src/nl2opt/solvers/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "src/nl2opt/solvers/render.py": "e5d93d12e473ee00b9bd0dad10283b900b365f974fc886ecf753cb78c21c6fbd",
+      "src/nl2opt/solvers/templates/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "src/nl2opt/solvers/templates/assignment.py.j2": "216fc86b49238633b3af58624575c4aa674e2d8f040c4e091c1ddaf8220b4cd0",
+      "src/nl2opt/solvers/templates/generic_lp.py.j2": "47b103bac3fb637df80ad3a545b7d460c58dc33b0c11f25f8785600a5352d38b",
+      "src/nl2opt/solvers/templates/jobshop.py.j2": "d006810f7233498ae871cb8df09d9bb48c4c3a82f89a7e698bd3357471c22b12",
+      "src/nl2opt/solvers/templates/production.py.j2": "7b9ab8fd27edc0afa0d87beb6ebcf9f0d83bf5a9f3773e3cf430130f6969caac",
+      "src/nl2opt/solvers/templates/vrp.py.j2": "cdda1e1de8c34aac3a0ed164fc1e81d1026d9fa6391c84d14d2b0100d3da7493",
+      "src/nl2opt/ui/__init__.py": "ffb68c4799e1988777f48a6273ee1224e2bd7b6a997cb32a522bcb0a954dd9d0",
+      "src/nl2opt/ui/demo_cases.py": "b679dc35aa718f5c6c40307229cb4dfc143937095076fa87796ae3b7c1230c74",
+      "src/nl2opt/ui/explain.py": "773d1db4506e03306490a191c255895d1ca026bc43f0a897f22d2265a6050c45",
+      "src/nl2opt/ui/streamlit_app.py": "7ffc5ac4fcd73440b99bf94596f0b80b6f146eeb5aa8064c094544e77aedc3ba"
+    },
+    "lock_sha256": "402a17a9f2e9e405c6a4fdee95de62ee689cc47a85c70254e08ad4103a7d1815",
+    "python": "3.11.15",
+    "dependencies": {
+      "ortools": "9.15.6755",
+      "pydantic": "2.13.5",
+      "jinja2": "3.1.6",
+      "openai": "3.14.0",
+      "pytest": "9.1.1"
+    },
+    "model_called": false,
+    "command": "uv run python scripts/export_portfolio_evidence.py"
+  },
+  "limitations": [
+    "前检与后检依赖已抽取的 ProblemSpec，不能证明自然语言语义全部正确。",
+    "checker 通过不等于独立证明全局最优。",
+    "故障注入用于展示真实检查机制，不代表历史模型实际输出。",
+    "本导出脚本未调用真实模型；历史 20/20、公开基准和另行记录的 live smoke 与这些确定性演示分别呈现。"
+  ],
+  "cases": [
+    {
+      "prompt_zh": "工厂生产 A、B 两种产品。A 每件利润 40 元，B 每件利润 30 元。A 每件需要工时 2、材料 1；B 每件需要工时 1、材料 2。工时上限 100，材料上限 80。产量为非负整数，求最大利润。",
+      "prompt_provenance": "人工转述已有 JSON 样例；本次未调用 LLM 抽取。",
+      "problem_spec": {
+        "problem_id": "production_basic",
+        "problem_type": "production",
+        "objective": {
+          "sense": "maximize",
+          "name": "profit"
+        },
+        "products": [
+          {
+            "name": "A",
+            "profit": 40.0
+          },
+          {
+            "name": "B",
+            "profit": 30.0
+          }
+        ],
+        "resources": [
+          {
+            "name": "labor",
+            "capacity": 100.0
+          },
+          {
+            "name": "material",
+            "capacity": 80.0
+          }
+        ],
+        "consumption": {
+          "A": {
+            "labor": 2.0,
+            "material": 1.0
+          },
+          "B": {
+            "labor": 1.0,
+            "material": 2.0
+          }
+        },
+        "assumptions": [
+          "Product quantities are non-negative integers.",
+          "Profit is linear in production quantity."
+        ],
+        "missing_fields": []
+      },
+      "id": "production-success",
+      "label": "成功案例：求解后独立复核",
+      "kind": "deterministic_run",
+      "description": "实际运行固定模板与 OR-Tools，随后由 production checker 重算资源和利润。",
+      "solver_result": {
+        "status": "OPTIMAL",
+        "objective_value": 2200.0,
+        "solution": {
+          "quantities": {
+            "A": 40,
+            "B": 20
+          },
+          "resource_usage": {
+            "labor": 100,
+            "material": 80
+          }
+        },
+        "runtime_sec": 0.028661166987149045,
+        "solver": "ortools.linear_solver:SCIP",
+        "violations": []
+      },
+      "checker_report": {
+        "passed": true,
+        "violations": [],
+        "computed_objective": 2200.0,
+        "resource_usage": {
+          "labor": 100.0,
+          "material": 80.0
+        },
+        "details": {}
+      },
+      "pipeline_result": {
+        "problem_id": "production_basic",
+        "problem_type": "production",
+        "returncode": 0,
+        "timed_out": false,
+        "solver_status": "OPTIMAL",
+        "objective_value": 2200.0,
+        "checker_passed": true,
+        "violations": [],
+        "runtime_sec": 0.11090362499817275,
+        "error": null,
+        "failure_stage": null,
+        "checker_report": {
+          "passed": true,
+          "violations": [],
+          "computed_objective": 2200.0,
+          "resource_usage": {
+            "labor": 100.0,
+            "material": 80.0
+          },
+          "details": {}
+        }
+      },
+      "provenance": {
+        "model_called": false,
+        "solver_called": true,
+        "checker_called": true,
+        "fault_injected": false
+      }
+    },
+    {
+      "prompt_zh": "工厂生产 A、B 两种产品。A 每件利润 40 元，B 每件利润 30 元。A 每件需要工时 2、材料 1；B 每件需要工时 1、材料 2。工时上限 100，材料上限 80。产量为非负整数，求最大利润。",
+      "prompt_provenance": "人工转述已有 JSON 样例；本次未调用 LLM 抽取。",
+      "problem_spec": {
+        "problem_id": "production_basic",
+        "problem_type": "production",
+        "objective": {
+          "sense": "maximize",
+          "name": "profit"
+        },
+        "products": [
+          {
+            "name": "A",
+            "profit": 40.0
+          },
+          {
+            "name": "B",
+            "profit": 30.0
+          }
+        ],
+        "resources": [
+          {
+            "name": "labor",
+            "capacity": 100.0
+          },
+          {
+            "name": "material",
+            "capacity": 80.0
+          }
+        ],
+        "consumption": {
+          "A": {
+            "labor": 2.0,
+            "material": 1.0
+          },
+          "B": {
+            "labor": 1.0,
+            "material": 2.0
+          }
+        },
+        "assumptions": [
+          "Product quantities are non-negative integers.",
+          "Profit is linear in production quantity."
+        ],
+        "missing_fields": []
+      },
+      "id": "production-capacity-failure",
+      "label": "故障注入：资源超限",
+      "kind": "fault_injection",
+      "description": "人工将产量改为 A=41、B=20；真实 checker 应发现工时 102>100、材料 81>80。",
+      "solver_result": {
+        "status": "FEASIBLE",
+        "objective_value": 2240.0,
+        "solution": {
+          "quantities": {
+            "A": 41,
+            "B": 20
+          }
+        },
+        "runtime_sec": 0.0,
+        "solver": "fault_injection_no_solver_call",
+        "violations": []
+      },
+      "checker_report": {
+        "passed": false,
+        "violations": [
+          "resource labor capacity exceeded: usage=102.0, capacity=100.0",
+          "resource material capacity exceeded: usage=81.0, capacity=80.0"
+        ],
+        "computed_objective": 2240.0,
+        "resource_usage": {
+          "labor": 102.0,
+          "material": 81.0
+        },
+        "details": {}
+      },
+      "pipeline_result": {
+        "failure_stage": "checker",
+        "checker_passed": false,
+        "violations": [
+          "resource labor capacity exceeded: usage=102.0, capacity=100.0",
+          "resource material capacity exceeded: usage=81.0, capacity=80.0"
+        ],
+        "solver_executed": false
+      },
+      "provenance": {
+        "model_called": false,
+        "solver_called": false,
+        "checker_called": true,
+        "fault_injected": true
+      }
+    },
+    {
+      "prompt_zh": "工厂生产 A、B 两种产品。A 每件利润 40 元，B 每件利润 30 元。A 每件需要工时 2、材料 1；B 每件需要工时 1、材料 2。工时上限 100，材料上限 80。产量为非负整数，求最大利润。",
+      "prompt_provenance": "人工转述已有 JSON 样例；本次未调用 LLM 抽取。",
+      "problem_spec": {
+        "problem_id": "production_basic",
+        "problem_type": "production",
+        "objective": {
+          "sense": "maximize",
+          "name": "profit"
+        },
+        "products": [
+          {
+            "name": "A",
+            "profit": 40.0
+          },
+          {
+            "name": "B",
+            "profit": 30.0
+          }
+        ],
+        "resources": [
+          {
+            "name": "labor",
+            "capacity": 100.0
+          },
+          {
+            "name": "material",
+            "capacity": 80.0
+          }
+        ],
+        "consumption": {
+          "A": {
+            "labor": 2.0,
+            "material": 1.0
+          },
+          "B": {
+            "labor": 1.0,
+            "material": 2.0
+          }
+        },
+        "assumptions": [
+          "Product quantities are non-negative integers.",
+          "Profit is linear in production quantity."
+        ],
+        "missing_fields": []
+      },
+      "id": "production-integrality-failure",
+      "label": "故障注入：小数产量",
+      "kind": "fault_injection",
+      "description": "人工构造 A=0.5、B=0、利润=20；即便资源未超限，真实 checker 仍须拒绝非整数产量。",
+      "solver_result": {
+        "status": "FEASIBLE",
+        "objective_value": 20.0,
+        "solution": {
+          "quantities": {
+            "A": 0.5,
+            "B": 0
+          }
+        },
+        "runtime_sec": 0.0,
+        "solver": "fault_injection_no_solver_call",
+        "violations": []
+      },
+      "checker_report": {
+        "passed": false,
+        "violations": [
+          "quantity for A must be an integer",
+          "objective mismatch: computed=0.0, reported=20.0"
+        ],
+        "computed_objective": 0.0,
+        "resource_usage": {
+          "labor": 0.0,
+          "material": 0.0
+        },
+        "details": {}
+      },
+      "pipeline_result": {
+        "failure_stage": "checker",
+        "checker_passed": false,
+        "violations": [
+          "quantity for A must be an integer",
+          "objective mismatch: computed=0.0, reported=20.0"
+        ],
+        "solver_executed": false
+      },
+      "provenance": {
+        "model_called": false,
+        "solver_called": false,
+        "checker_called": true,
+        "fault_injected": true
+      }
+    },
+    {
+      "prompt_zh": "工厂生产 A、B 两种产品。A 每件利润 40 元，B 每件利润 30 元。A 每件需要工时 2、材料 1；B 每件需要工时 1、材料 2。工时上限 100，材料上限 80。产量为非负整数，求最大利润。",
+      "prompt_provenance": "人工转述已有 JSON 样例；本次未调用 LLM 抽取。",
+      "problem_spec": {
+        "problem_id": "production_basic",
+        "problem_type": "production",
+        "objective": {
+          "sense": "maximize",
+          "name": "profit"
+        },
+        "products": [
+          {
+            "name": "A",
+            "profit": 40.0
+          },
+          {
+            "name": "B",
+            "profit": 30.0
+          }
+        ],
+        "resources": [
+          {
+            "name": "labor",
+            "capacity": 100.0
+          },
+          {
+            "name": "material",
+            "capacity": 80.0
+          }
+        ],
+        "consumption": {
+          "A": {
+            "labor": 2.0,
+            "material": 1.0
+          },
+          "B": {
+            "labor": 1.0,
+            "material": 2.0
+          }
+        },
+        "assumptions": [
+          "Product quantities are non-negative integers.",
+          "Profit is linear in production quantity."
+        ],
+        "missing_fields": [
+          "material.capacity"
+        ]
+      },
+      "id": "production-missing-fields",
+      "label": "故障注入：缺参前检拒绝",
+      "kind": "fault_injection",
+      "description": "人工将 material.capacity 标为缺参（保留的数值视为占位值），由真实 pipeline 在生成求解代码前拒绝。",
+      "solver_result": null,
+      "checker_report": null,
+      "pipeline_result": {
+        "problem_id": "production_basic",
+        "problem_type": "production",
+        "returncode": null,
+        "timed_out": false,
+        "solver_status": null,
+        "objective_value": null,
+        "checker_passed": false,
+        "violations": [
+          "missing required fields: material.capacity"
+        ],
+        "runtime_sec": null,
+        "error": "missing required fields: material.capacity",
+        "failure_stage": "missing_required_fields",
+        "checker_report": null
+      },
+      "provenance": {
+        "model_called": false,
+        "solver_called": false,
+        "checker_called": false,
+        "fault_injected": true
+      }
+    }
+  ],
+  "benchmarks": [
+    {
+      "id": "public-20260710-off",
+      "label": "公开基准 · checker retry off",
+      "total": 2070,
+      "passed": 1098,
+      "failures": 972,
+      "accuracy_pct": 53.0,
+      "checker_retry": "off",
+      "checker_retries": 0,
+      "source_csv": "reports/artifacts/public-20260710-off/results.csv",
+      "source_csv_sha256": "1b2e8333f5382e58269417fc8bb41747a12f7cb9a4acb235e3e3fad36d47be0c",
+      "completed_at": "2026-07-10T23:13:19.839801Z",
+      "scope": "345 个原始题（NL4Opt 245 + IndustryOR 100）× 英语/中文 × 3 次重复 = 2,070 次尝试",
+      "categories": {
+        "API_ERR": 106,
+        "CODEGEN_ERR": 32,
+        "EXTRACT_ERR": 260,
+        "INFEASIBLE_MISMATCH": 22,
+        "UNSUPPORTED": 146,
+        "WRONG_OPT": 406
+      },
+      "full_artifact_available": false
+    },
+    {
+      "id": "public-20260711-on-rerun",
+      "label": "公开基准 · checker retry on",
+      "total": 2070,
+      "passed": 1083,
+      "failures": 987,
+      "accuracy_pct": 52.3,
+      "checker_retry": "on",
+      "checker_retries": 412,
+      "source_csv": "reports/artifacts/public-20260711-on-rerun/results.csv",
+      "source_csv_sha256": "c63157acae80c0323963a3a96681e24278bd9e3869a5eac9619b3e0c608e6902",
+      "completed_at": "2026-07-12T11:13:30.840856Z",
+      "scope": "345 个原始题（NL4Opt 245 + IndustryOR 100）× 英语/中文 × 3 次重复 = 2,070 次尝试",
+      "categories": {
+        "API_ERR": 115,
+        "CODEGEN_ERR": 34,
+        "EXTRACT_ERR": 245,
+        "INFEASIBLE_MISMATCH": 25,
+        "UNSUPPORTED": 142,
+        "WRONG_OPT": 426
+      },
+      "full_artifact_available": false
+    }
+  ]
+}

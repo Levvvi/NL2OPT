@@ -2,7 +2,7 @@
 
 ## 30-second Version
 
-NL2OPT is a Chinese natural-language optimization modeling agent. It classifies a business problem, uses DeepSeek to extract a structured `ProblemSpec`, solves it with OR-Tools templates, and independently checks feasibility and objective consistency. The project covers production planning, task assignment, jobshop scheduling, and CVRP. In the final live eval with `deepseek-v4-flash`, `prompt_version=v3`, and `mock=false`, the self-built 20-case benchmark passes 20/20 end to end.
+NL2OPT is a controlled Chinese natural-language optimization modeling workflow. It classifies a business problem, uses DeepSeek to extract a structured `ProblemSpec`, solves it with OR-Tools templates, and independently checks feasibility and objective consistency. The project covers production planning, task assignment, jobshop scheduling, and CVRP. In the historical 2026-06-30 live eval with `deepseek-v4-flash`, `prompt_version=v3`, and `mock=false`, the self-built 20-case benchmark passes 20/20 end to end.
 
 ## Public Benchmark Status
 
@@ -27,17 +27,17 @@ I deliberately do not let the LLM freely write OR-Tools code. Instead, each prob
 
 After OR-Tools solves the model, an independent checker recomputes feasibility and objective value from the original spec and solver result. This is important because "the solver produced a JSON file" is not the same as "the solution is valid."
 
-The project is evaluated with a 20-case Chinese benchmark: 8 easy, 8 medium, and 4 hard cases across all four problem types. In the final real DeepSeek live eval, using `deepseek-v4-flash` and `prompt_version=v3`, all 20 cases pass end to end. For an AI application or operations research role, the project shows both LLM integration discipline and optimization-modeling judgment.
+The project is evaluated with a 20-case Chinese benchmark: 8 easy, 8 medium, and 4 hard cases across all four problem types. In the historical 2026-06-30 real DeepSeek live eval, using `deepseek-v4-flash` and `prompt_version=v3`, all 20 cases pass end to end. For an AI application or operations research role, the project shows both LLM integration discipline and optimization-modeling judgment.
 
 ## Resume Bullets
 
 Version A, AI application focus:
 
-> Built NL2OPT, a Chinese natural-language optimization modeling agent: used DeepSeek API to extract entities and constraints for production planning, assignment, jobshop scheduling, and vehicle routing; validated outputs with Pydantic schemas, solved with template-based OR-Tools code, and verified solutions with independent checkers. Created a 20-case Chinese benchmark and achieved 20/20 end-to-end success in a real `deepseek-v4-flash` live eval.
+> Built NL2OPT, a controlled Chinese natural-language optimization modeling workflow: used DeepSeek API to extract entities and constraints for production planning, assignment, jobshop scheduling, and vehicle routing; validated outputs with Pydantic schemas, solved with template-based OR-Tools code, and verified solutions with independent checkers. Created a 20-case Chinese benchmark and achieved 20/20 end-to-end success in a real `deepseek-v4-flash` live eval.
 
 Version B, operations research focus:
 
-> Implemented an end-to-end optimization modeling and solving workflow for Chinese business descriptions: represented production, assignment, scheduling, and routing problems as structured `ProblemSpec` objects, solved them with OR-Tools, and independently checked feasibility and objective consistency; achieved 100% end-to-end pass rate on a self-built 20-case benchmark.
+> Implemented an end-to-end optimization modeling and solving workflow for Chinese business descriptions: represented production, assignment, scheduling, and routing problems as structured `ProblemSpec` objects, solved them with OR-Tools, and independently checked feasibility and objective consistency; recorded 20/20 end-to-end passes on the self-built 20-case benchmark in the 2026-06-30 live run.
 
 ## Common Interview Questions
 
@@ -51,7 +51,7 @@ No. The 20/20 result is for a self-built benchmark covering four supported probl
 
 ### What does the checker do?
 
-The checker independently verifies solver output instead of trusting `solution.json`. It recomputes resource usage, assignment coverage, machine conflicts, route distances, capacities, and objective values from the original spec.
+The checker recomputes resource usage, assignment coverage, machine conflicts, route distances, capacities, and objective values from the extracted spec. It can reject a wrong candidate independently of the solver, but cannot prove that the spec preserved every original language requirement or independently certify global optimality.
 
 ### How does this relate to an operations research background?
 
@@ -63,4 +63,4 @@ The extractor can record missing information in `missing_fields`. If the missing
 
 ### What would you improve next?
 
-The next steps would be a repair loop for incomplete extraction, more problem families, stronger eval coverage, and safer execution isolation if the project were moved beyond local interview demos. For the current P3 scope, the project intentionally remains a small local MVP.
+The immediate focus is reproducible evidence, checks at explicit boundaries, and a bounded demonstration service. I would expand problem families or add repair loops only after failure analysis establishes their value. The independent retry-on public run did not show improved accuracy. Current release validation is dated and versioned in `docs/nl2opt_audit.md`.

@@ -1,0 +1,94 @@
+{
+  "run_id": "e4514c5cc2c0478386c0480f2cabc14f",
+  "mode": "text",
+  "status": "failed",
+  "stage": "schema",
+  "problem_spec": {
+    "problem_id": "unknown",
+    "problem_type": "production",
+    "objective": {
+      "sense": "maximize",
+      "name": "profit"
+    },
+    "products": [
+      {
+        "name": "A",
+        "profit": 40.0
+      },
+      {
+        "name": "B",
+        "profit": 30.0
+      }
+    ],
+    "resources": [
+      {
+        "name": "工时",
+        "capacity": 100.0
+      },
+      {
+        "name": "材料",
+        "capacity": 80.0
+      }
+    ],
+    "consumption": {
+      "A": {
+        "工时": 2.0,
+        "材料": 1.0
+      },
+      "B": {
+        "工时": 1.0,
+        "材料": 2.0
+      }
+    },
+    "assumptions": [
+      "A和B产量为非负整数"
+    ],
+    "missing_fields": [
+      "problem_id"
+    ]
+  },
+  "solver_result": null,
+  "checker_report": null,
+  "diagnostics": {
+    "router": {
+      "problem_type": "production",
+      "confidence": 0.95,
+      "matched_keywords": [
+        "工厂",
+        "生产",
+        "产品",
+        "利润",
+        "工时",
+        "产量",
+        "材料"
+      ],
+      "reason": "命中 production 相关关键词：工厂、生产、产品、利润、工时、产量、材料"
+    },
+    "token_usage": {
+      "completion_tokens": 681,
+      "prompt_tokens": 1123,
+      "total_tokens": 1804
+    },
+    "solver_executed": false,
+    "solver_runtime_sec": null,
+    "timed_out": false,
+    "elapsed_ms": 5503
+  },
+  "provenance": {
+    "source": "live_solver",
+    "created_at": "2026-09-16T07:29:22.003456+00:00",
+    "revision": "06b8fa7+portfolio-reliability",
+    "ortools_version": "9.15.6755",
+    "checker_proves": "feasibility_and_objective_consistency_for_extracted_spec",
+    "semantic_equivalence_proven": false,
+    "independent_optimality_proven": false,
+    "provider": "deepseek",
+    "model": "deepseek-flash",
+    "prompt_version": "v2"
+  },
+  "error": {
+    "code": "MISSING_REQUIRED_FIELDS",
+    "message": "模型仍有缺失的必填信息，未启动求解。",
+    "stage": "schema"
+  }
+}

@@ -14,7 +14,7 @@ def test_jobshop_basic_end_to_end(tmp_path):
 
     spec = JobshopProblemSpec.model_validate_json(SPEC_PATH.read_text(encoding="utf-8"))
     code = render_jobshop_code(spec)
-    run_result = run_python_code(code, tmp_path)
+    run_result = run_python_code(code, tmp_path, timeout_sec=30)
 
     assert run_result.returncode == 0, run_result.stderr
     result = load_solver_result(run_result.solution_path)

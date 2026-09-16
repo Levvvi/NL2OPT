@@ -6,7 +6,7 @@ from pathlib import Path
 from nl2opt.pipeline import PipelineResult, run_problem_file
 
 
-def run_all(output_root: Path) -> list[PipelineResult]:
+def run_all(output_root: Path, timeout_sec: int = 10) -> list[PipelineResult]:
     project_root = Path(__file__).resolve().parents[1]
     specs_dir = project_root / "examples" / "specs"
     cases = [
@@ -17,7 +17,7 @@ def run_all(output_root: Path) -> list[PipelineResult]:
     ]
 
     return [
-        run_problem_file(spec_path, output_root / spec_path.stem, timeout_sec=10)
+        run_problem_file(spec_path, output_root / spec_path.stem, timeout_sec=timeout_sec)
         for spec_path in cases
     ]
 
@@ -41,9 +41,10 @@ def main() -> int:
         type=Path,
         default=project_root / "outputs" / "pipeline",
     )
+    parser.add_argument("--timeout-sec", type=int, default=10)
     args = parser.parse_args()
 
-    results = run_all(args.output_root)
+    results = run_all(args.output_root, timeout_sec=args.timeout_sec)
     print_table(results)
     return 0 if all(result.checker_passed for result in results) else 1
 

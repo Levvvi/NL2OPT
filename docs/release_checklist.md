@@ -1,53 +1,31 @@
-# Release Checklist
+# Release checklist · 2026-09-16 UTC
 
-## Core Validation
+基线：`06b8fa740fe534bccf887a2b4a9aa8de1158ad10`。隔离验证后同步，提交与发布状态以Git/Actions实际记录为准。逐文件和聚合源码哈希见 `reports/portfolio/evidence.json`。环境、命令与实际结果以 [nl2opt_audit.md](nl2opt_audit.md) 为准。
 
-- [x] `python -m pip install -e ".[dev]"`
-- [x] `pytest -q -o cache_dir=.tmp_pytest_cache`
-- [x] `python -m nl2opt.eval.case_quality --difficulty all`
-- [x] `python examples/run_mock_nl_basic.py --prompt-version v3`
-- [x] `python examples/run_all_basic.py`
-- [x] `python -c "import nl2opt.ui.streamlit_app; print('STREAMLIT_APP_IMPORT_OK')"`
-- [x] Streamlit headless health check returned HTTP 200 during P3-T18 validation.
+## 当前实现与证据
 
-## Eval Validation
+- [x] 保留并验证 `uv.lock`；Python 3.11.15 / 3.12.14隔离环境安装成功。
+- [x] production checker整数与有限数漏洞已修复并有反例；未知产品名会拒绝，缺失的产品产量沿用按0处理的语义。
+- [x] 各入口共享缺参门禁，失败阶段与完整checker报告落盘。
+- [x] CLI mock测试改为轻量单题，jobshop集成测试显式30秒预算。
+- [x] Python3.11连续两次全量测试通过：每轮412 passed，3条既有SWIG warning，118.61/117.79秒；发生在最后测试预算/示例CLI调整前，运行库产品代码未变。
+- [x] Python3.12最终文件连续两次全量通过：每轮412 passed，3条既有SWIG warning，116.68/116.21秒。
+- [x] 静态题集质量20/20，四类确定性示例全部通过。
+- [x] 生成成功、资源超限、小数产量与缺参脱敏演示产物。
+- [x] 公开失败CSV索引保留真实ID/计数，不链接未公开完整档案。
+- [x] README首屏说明用途、两个检查关口、无密钥演示与评测范围。
+- [x] 正式报告重建命令含retry-on三个对照参数，已验证重建一致。
+- [x] 演示脚本只引用仓库已有或明确需现场生成的文件。
+- [x] GitHub Actions新增Python3.11/3.12无密钥测试矩阵，依赖安装使用`--locked`。
 
-- [x] Final 20 live eval summary exists at `outputs/deepseek_extractor_eval/all/summary.json`.
-- [x] `provider=deepseek`
-- [x] `model=deepseek-v4-flash`
-- [x] `mock=false`
-- [x] `prompt_version=v3`
-- [x] `end_to_end_success=20/20`
-- [x] `spec_success=20/20`
-- [x] `checker_success=20/20`
-- [x] `objective_match=20/20`
-- [x] `failure_breakdown={}`
+## 外部运行状态
 
-## Documentation Validation
+- [x] 提交 `6684bf3` 的GitHub远程 [PR](https://github.com/Levvvi/NL2OPT/actions/runs/35070598463) 与 [push](https://github.com/Levvvi/NL2OPT/actions/runs/35070596537) 验收均通过，Python 3.11/3.12全部步骤成功。
+- [x] 当前版本真实模型单题smoke：首轮schema拒绝已保留；修复后prompt v3、返回模型deepseek-flash、2135ms/1478tokens、目标2200且checker通过。仅单题，不继承或重跑历史20/20。
+- [ ] 公网后端部署健康检查：须部署后核验，不能以本地通过代替。
 
-- [x] README complete.
-- [x] Architecture doc complete: `docs/architecture.md`.
-- [x] Eval report complete: `docs/eval_report.md`.
-- [x] Demo script complete: `docs/demo_script.md`.
-- [x] Interview notes complete: `docs/interview_notes.md`.
-- [x] Final 20 live report complete: `docs/deepseek_final_20_eval_report.md`.
-- [x] Final 20 failure analysis complete: `docs/deepseek_final_20_failure_analysis.md`.
+## 历史记录与边界
 
-## Security Validation
+2026-06-30自建20题真实模型评测`20/20`来自既有report/summary，不是上述本轮验收。公开基准为每轮345题×双语言×3次重复；53.0%与52.3%为两轮分别记录，不能宣称重试提升。
 
-- [x] No real API key committed.
-- [x] `.env` and `.env.local` are ignored.
-- [x] `.streamlit/secrets.toml` is ignored.
-- [x] No Authorization header saved in project docs or source files.
-- [x] No key prefix, suffix, length, or hash is printed by diagnostics.
-
-## Scope Validation
-
-- [x] No claim of industrial production readiness.
-- [x] No claim of supporting arbitrary optimization problems.
-- [x] No claim of public sandbox safety.
-- [x] Streamlit is documented as a local interview demo, not a public production service.
-
-## Release Recommendation
-
-P3 is ready for GitHub portfolio use and interview demonstration after a final human review of README wording and repository visibility.
+无密钥演示可用于主页展示；真实模型入口必须显示其实际启用状态。项目不声明工业生产就绪、任意优化问题通用能力、任意代码执行安全性或独立最优性证明。

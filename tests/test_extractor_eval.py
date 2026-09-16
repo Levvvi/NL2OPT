@@ -72,7 +72,7 @@ def test_extractor_cases_router_classification():
 def test_evaluate_mock_extractor_cases_metrics(tmp_path):
     from nl2opt.eval.extractor_eval import evaluate_mock_extractor_cases
 
-    metrics = evaluate_mock_extractor_cases(CASES_PATH, tmp_path / "mock_eval")
+    metrics = evaluate_mock_extractor_cases(CASES_PATH, tmp_path / "mock_eval", timeout_sec=30)
 
     assert metrics["total"] == 8
     assert metrics["router_accuracy"] == 1.0
@@ -89,6 +89,7 @@ def test_evaluate_mock_extractor_cases_medium_metrics(tmp_path):
         tmp_path / "mock_medium",
         prompt_version="v3",
         difficulty="medium",
+        timeout_sec=30,
     )
 
     assert metrics["total"] == 8
@@ -107,6 +108,7 @@ def test_evaluate_mock_extractor_cases_hard_metrics(tmp_path):
         tmp_path / "mock_hard",
         prompt_version="v3",
         difficulty="hard",
+        timeout_sec=30,
     )
 
     assert metrics["total"] == 4
@@ -125,6 +127,7 @@ def test_evaluate_mock_extractor_cases_all_metrics(tmp_path):
         tmp_path / "mock_all",
         prompt_version="v3",
         difficulty="all",
+        timeout_sec=30,
     )
 
     assert metrics["total"] == 20
@@ -145,11 +148,14 @@ def test_extractor_eval_cli_runs(tmp_path):
             str(CASES_PATH),
             "--output-dir",
             str(tmp_path / "mock_eval"),
+            "--timeout-sec",
+            "30",
         ],
         cwd=ROOT,
         capture_output=True,
         text=True,
         check=False,
+        timeout=270,  # Eight cases at 30 seconds each, plus CLI startup headroom.
     )
 
     assert completed.returncode == 0, completed.stderr

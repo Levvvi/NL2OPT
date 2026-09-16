@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib
+import json
+from pathlib import Path
 
 
 def test_demo_cases_load_three_stable_cases():
@@ -68,3 +70,30 @@ def test_run_single_problem_rejects_missing_client_for_live_path():
 
     assert result["success"] is False
     assert "client" in result["error"].lower()
+
+
+def test_live_ui_blocks_unresolved_fields_without_claiming_checker_passed(monkeypatch, tmp_path):
+    import nl2opt.pipeline as pipeline
+    from nl2opt.agents.llm_client import MockLLMClient
+    from nl2opt.ui.streamlit_app import run_single_problem
+
+    spec_path = Path(__file__).resolve().parents[1] / "examples/specs/production_basic.json"
+    payload = json.loads(spec_path.read_text(encoding="utf-8"))
+    payload["missing_fields"] = ["consumption.A.labor"]
+
+    def must_not_run(*args, **kwargs):
+        raise AssertionError("a missing field must not reach the solver")
+
+    monkeypatch.setattr(pipeline, "run_python_code", must_not_run)
+    result = run_single_problem(
+        "工厂生产产品 A 和 B，求最大利润。",
+        client=MockLLMClient(payload),
+        output_root=tmp_path,
+    )
+
+    assert result["success"] is False
+    assert result["failure_stage"] == "missing_required_fields"
+    assert result["checker_report"] is None
+    assert result["solver_result"] is None
+    assert "尚未完成结果复核" in result["explanation"]
+    assert "确认生产计划满足" not in result["explanation"]

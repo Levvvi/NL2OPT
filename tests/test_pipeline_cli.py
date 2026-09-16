@@ -40,11 +40,14 @@ def test_run_all_basic_script(tmp_path):
             str(ROOT / "examples" / "run_all_basic.py"),
             "--output-root",
             str(tmp_path / "pipeline"),
+            "--timeout-sec",
+            "30",
         ],
         cwd=ROOT,
         capture_output=True,
         text=True,
         check=False,
+        timeout=150,  # Four cases at 30 seconds each, plus CLI startup headroom.
     )
 
     assert completed.returncode == 0, completed.stderr

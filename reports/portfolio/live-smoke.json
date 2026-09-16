@@ -1,0 +1,115 @@
+{
+  "run_id": "1deca11080124439b68314f7110359cf",
+  "mode": "text",
+  "status": "succeeded",
+  "stage": "complete",
+  "problem_spec": {
+    "problem_id": "production_A_B_01",
+    "problem_type": "production",
+    "objective": {
+      "sense": "maximize",
+      "name": "profit"
+    },
+    "products": [
+      {
+        "name": "A",
+        "profit": 40.0
+      },
+      {
+        "name": "B",
+        "profit": 30.0
+      }
+    ],
+    "resources": [
+      {
+        "name": "labor",
+        "capacity": 100.0
+      },
+      {
+        "name": "material",
+        "capacity": 80.0
+      }
+    ],
+    "consumption": {
+      "A": {
+        "labor": 2.0,
+        "material": 1.0
+      },
+      "B": {
+        "labor": 1.0,
+        "material": 2.0
+      }
+    },
+    "assumptions": [
+      "A和B的产量必须为非负整数",
+      "工时和材料为两种独立资源，容量分别为100和80"
+    ],
+    "missing_fields": []
+  },
+  "solver_result": {
+    "status": "OPTIMAL",
+    "objective_value": 2200.0,
+    "solution": {
+      "quantities": {
+        "A": 40,
+        "B": 20
+      },
+      "resource_usage": {
+        "labor": 100,
+        "material": 80
+      }
+    },
+    "runtime_sec": 0.0016779590223450214,
+    "solver": "ortools.linear_solver:SCIP",
+    "violations": []
+  },
+  "checker_report": {
+    "passed": true,
+    "violations": [],
+    "computed_objective": 2200.0,
+    "resource_usage": {
+      "labor": 100.0,
+      "material": 80.0
+    },
+    "details": {}
+  },
+  "diagnostics": {
+    "router": {
+      "problem_type": "production",
+      "confidence": 0.95,
+      "matched_keywords": [
+        "工厂",
+        "生产",
+        "产品",
+        "利润",
+        "工时",
+        "产量",
+        "材料"
+      ],
+      "reason": "命中 production 相关关键词：工厂、生产、产品、利润、工时、产量、材料"
+    },
+    "token_usage": {
+      "completion_tokens": 127,
+      "prompt_tokens": 1351,
+      "total_tokens": 1478
+    },
+    "solver_executed": true,
+    "solver_runtime_sec": 0.08539258400560357,
+    "timed_out": false,
+    "elapsed_ms": 2135
+  },
+  "provenance": {
+    "source": "live_solver",
+    "created_at": "2026-09-16T07:32:01.551617+00:00",
+    "revision": "06b8fa7+portfolio-reliability",
+    "ortools_version": "9.15.6755",
+    "checker_proves": "feasibility_and_objective_consistency_for_extracted_spec",
+    "semantic_equivalence_proven": false,
+    "independent_optimality_proven": false,
+    "provider": "deepseek",
+    "model": "deepseek-flash",
+    "requested_model": "deepseek-flash",
+    "model_identifier_source": "provider_response",
+    "prompt_version": "v3"
+  }
+}

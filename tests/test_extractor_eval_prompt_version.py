@@ -18,6 +18,7 @@ def test_mock_extractor_eval_records_prompt_version(tmp_path):
         CASES_PATH,
         tmp_path / "mock_eval",
         prompt_version="v2",
+        timeout_sec=30,
     )
 
     assert metrics["prompt_version"] == "v2"

@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SPECS_DIR = ROOT / "examples" / "specs"
@@ -90,7 +92,8 @@ def test_run_problem_file_assignment_basic(tmp_path):
 def test_run_problem_file_jobshop_basic(tmp_path):
     from nl2opt.pipeline import run_problem_file
 
-    result = run_problem_file(spec_path("jobshop_basic"), tmp_path / "jobshop")
+    # Allow CP-SAT import/startup headroom on shared CI hosts.
+    result = run_problem_file(spec_path("jobshop_basic"), tmp_path / "jobshop", timeout_sec=30)
 
     assert result.checker_passed is True
     assert result.objective_value == 7
@@ -121,6 +124,12 @@ def test_pipeline_writes_report_json(tmp_path):
     assert report["checker_passed"] is True
     assert report["solution_path"] == result.solution_path
     assert "generated_model.py" not in report
+    checker = json.loads(Path(result.checker_report_path).read_text(encoding="utf-8"))
+    assert checker == report["checker_report"] == result.checker_report
+    assert checker["computed_objective"] == 2200
+    assert checker["resource_usage"] == {"labor": 100, "material": 80}
+    assert checker["details"] == {}
+    assert report["failure_stage"] is None
 
 
 def test_pipeline_rejects_unsupported_problem_type(tmp_path):
@@ -142,3 +151,27 @@ def test_pipeline_rejects_unsupported_problem_type(tmp_path):
     assert result.checker_passed is False
     assert result.error is not None
     assert "unsupported problem_type" in result.error
+
+
+@pytest.mark.parametrize("missing", ["consumption.A.labor", "unknown_business_parameter"])
+def test_pipeline_blocks_unresolved_fields_before_rendering(monkeypatch, tmp_path, missing):
+    import nl2opt.pipeline as pipeline
+
+    spec = pipeline.load_problem_spec(spec_path("production_basic"))
+    spec.missing_fields = [missing]
+
+    def must_not_render(_spec):
+        pytest.fail("unresolved fields must stop execution before code generation")
+
+    monkeypatch.setattr(pipeline, "render_code_for_spec", must_not_render)
+    result = pipeline.run_problem_spec(spec, tmp_path)
+
+    assert result.failure_stage == "missing_required_fields"
+    assert result.checker_passed is False
+    assert result.checker_report is None
+    assert result.code_path is None
+    assert result.solution_path is None
+    assert missing in result.error
+    assert not (tmp_path / "generated_model.py").exists()
+    assert not (tmp_path / "checker_report.json").exists()
+    assert json.loads((tmp_path / "pipeline_report.json").read_text())["failure_stage"] == "missing_required_fields"

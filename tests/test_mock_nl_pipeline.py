@@ -21,7 +21,7 @@ def run_mock_case(text: str, problem_type: str, spec_name: str, tmp_path: Path):
         client=MockLLMClient(json.loads(spec_path.read_text(encoding="utf-8"))),
     )
     assert result.success is True, result.error
-    return run_problem_spec(result.spec, tmp_path / spec_path.stem)
+    return run_problem_spec(result.spec, tmp_path / spec_path.stem, timeout_sec=30)
 
 
 def test_mock_nl_pipeline_production_tiny(tmp_path):
@@ -79,11 +79,14 @@ def test_run_mock_nl_basic_script(tmp_path):
             str(ROOT / "examples" / "run_mock_nl_basic.py"),
             "--output-dir",
             str(tmp_path / "mock_eval"),
+            "--timeout-sec",
+            "30",
         ],
         cwd=ROOT,
         capture_output=True,
         text=True,
         check=False,
+        timeout=270,  # Eight cases at 30 seconds each, plus CLI startup headroom.
     )
 
     assert completed.returncode == 0, completed.stderr
